@@ -14,7 +14,15 @@ export function float32ToInt16PCM(float32Array: Float32Array): string {
     const s = Math.max(-1, Math.min(1, float32Array[i]));
     int16Array[i] = s < 0 ? s * 0x8000 : s * 0x7fff;
   }
-  return btoa(String.fromCharCode(...new Uint8Array(int16Array.buffer)));
+  
+  const uint8Array = new Uint8Array(int16Array.buffer);
+  let binary = "";
+  const chunkSize = 16384;
+  for (let i = 0; i < uint8Array.length; i += chunkSize) {
+    const chunk = uint8Array.subarray(i, i + chunkSize);
+    binary += String.fromCharCode.apply(null, chunk as any);
+  }
+  return btoa(binary);
 }
 
 /**

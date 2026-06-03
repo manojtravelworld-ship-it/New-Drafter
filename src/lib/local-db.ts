@@ -33,7 +33,7 @@ export class LocalDB {
 
   public run(sql: string, params: any[]) {
     if (sql.toLowerCase().includes('insert into clients')) {
-      const [name, phone, case_number, court, next_date, purpose] = params;
+      const [name, phone, case_number, court, next_date, purpose, case_type, extra_fields] = params;
       const newClient = {
         id: Date.now(),
         name,
@@ -41,9 +41,28 @@ export class LocalDB {
         case_number,
         court,
         next_date,
-        purpose
+        purpose,
+        case_type: case_type || 'other',
+        extra_fields: extra_fields || {}
       };
       this.data.clients.push(newClient);
+      this.persist();
+    } else if (sql.toLowerCase().includes('update clients')) {
+      // Expecting parameters: [case_number, court, next_date, purpose, extra_fields, id]
+      const [case_number, court, next_date, purpose, extra_fields, id] = params;
+      this.data.clients = this.data.clients.map(c => {
+        if (c.id === Number(id)) {
+          return {
+            ...c,
+            case_number: case_number !== undefined ? case_number : c.case_number,
+            court: court !== undefined ? court : c.court,
+            next_date: next_date !== undefined ? next_date : c.next_date,
+            purpose: purpose !== undefined ? purpose : c.purpose,
+            extra_fields: extra_fields !== undefined ? extra_fields : c.extra_fields
+          };
+        }
+        return c;
+      });
       this.persist();
     }
   }

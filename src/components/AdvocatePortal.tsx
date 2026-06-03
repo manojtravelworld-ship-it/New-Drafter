@@ -8,7 +8,8 @@ import {
   ChevronLeft, ChevronRight, Play, Square, Copy, ExternalLink,
   CheckCircle, AlertTriangle, Info, X, Search, Plus, RotateCcw,
   Volume2, Send, Trash, Check, AlertCircle, LogOut, Upload, File,
-  Maximize2, Minimize2, Cpu, Zap, Anchor, ChevronDown, ChevronUp
+  Maximize2, Minimize2, Cpu, Zap, Anchor, ChevronDown, ChevronUp,
+  Scale, Landmark, Activity
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import ReactMarkdown from 'react-markdown';
@@ -17,6 +18,7 @@ import { VoiceVisualizer } from './VoiceVisualizer';
 import { HybridAIEngine, AIMessage, AIResponse, cleanStreamingText } from "../lib/ai-engine";
 import { MalayalamEngine } from "../lib/malayalam-engine";
 import { LocalDB } from "../lib/local-db";
+import { OfflineDB, Task, Reminder } from "../utils/OfflineDB";
 import { jsPDF } from "jspdf";
 import { Document, Packer, Paragraph, TextRun } from "docx";
 import { saveAs } from "file-saver";
@@ -249,6 +251,191 @@ const parseCitations = (text: string): CaseCitation[] => {
   return citations;
 };
 
+const PLAYBOOK_TEMPLATES: Record<string, { title: string, content: string }> = {
+  'OS Plaint': {
+    title: 'OS Plaint (Original Suit Plaint)',
+    content: `IN THE COURT OF THE MUNSIFF OF ERNAKULAM, KERALA
+O.S. No. ______ of 2026
+
+Between:
+[Plaintiff Name], S/o ______, residing at ______                     ... Plaintiff
+
+And:
+[Defendant Name], S/o ______, residing at ______                    ... Defendant
+
+PLAINT FILED UNDER ORDER VII RULE 1 OF THE CODE OF CIVIL PROCEDURE, 1908
+
+The Plaintiff respectfully submits:
+1. The Plaintiff is residing at the address shown above for service of notices and summons from this Hon'ble Court.
+2. The Defendant is residing at the address shown above for service of summons and notices.
+3. CAUSE OF ACTION: The cause of action for this suit arose on ______ (Date) when the Defendant structure encroached upon the Plaintiff's scheduled property...
+4. COURT FEES: Valuation of the suit is computed under Section 24 / 26 of the Kerala Court Fees and Suits Valuation Act, 1959. Adequate court fees of Rs. ______ is paid herewith.
+5. JURISDICTION: The value of the suit property is within the pecuniary jurisdiction of this Court, and the cause of action completely arose within the territorial limits of this court.
+
+PRAYER:
+Therefore, the Plaintiff prays that this Court be pleased to:
+a) Grant a decree of declaration of peaceful possession and ownership in favor of the Plaintiff.
+b) Issue a permanent prohibitory injunction restraining Defendant, their men, and agents from entering or altering the scheduled property.
+c) Award the costs of this suit to the Plaintiff.
+`
+  },
+  'Written Statement': {
+    title: 'Written Statement',
+    content: `IN THE COURT OF THE MUNSIFF OF ERNAKULAM, KERALA
+O.S. No. ______ of 2026
+
+Between:
+[Plaintiff Name]                                                     ... Plaintiff
+
+And:
+[Defendant Name]                                                    ... Defendant
+
+WRITTEN STATEMENT FILED BY THE DEFENDANT UNDER ORDER VIII RULE 1 OF THE CODE OF CIVIL PROCEDURE, 1908
+
+The Defendant respectfully submits:
+1. Unless specifically admitted herein, all allegations, statements, and pleas raised in the Plaint are denied as false and unsustainable.
+2. The suit is not maintainable either in law or on facts.
+3. Ground of Limitation: The cause of action claimed by the Plaintiff is barred under the Limitation Act.
+4. Specific Denial: Under Order VIII Rule 5 of CPC, the Defendant categorically denies the encroachment or boundaries asserted by the Plaintiff.
+
+PRAYER:
+Therefore, the Defendant prays that this Hon'ble Court may be pleased to dismiss the suit with exemplary costs of the Defendant.
+`
+  },
+  'IA Petition': {
+    title: 'IA Petition (Interlocutory Application)',
+    content: `IN THE COURT OF THE MUNSIFF OF ERNAKULAM, KERALA
+I.A. No. ______ of 2026
+in
+O.S. No. ______ of 2026
+
+Between:
+[Petitioner Name]                                                   ... Petitioner / Plaintiff
+
+And:
+[Respondent Name]                                                   ... Respondent / Defendant
+
+PETITION FILED UNDER SECTION 151 OF THE CODE OF CIVIL PROCEDURE, 1908
+
+The Petitioner respectfully submits:
+1. The Petitioner is the Plaintiff in the above suit. The averments in the accompanying affidavit may be read as part and parcel of this petition.
+2. The circumstances necessitating this Interlocutory Application are that the Respondent is trying to alter boundaries before the disposal of the main suit.
+3. Balance of Convenience and Irreparable Injury: If an ad-interim temporary injunction is not granted, the Petitioner will suffer extreme and irreparable injury which cannot be monetary compensated.
+
+PRAYER:
+Therefore, the Petitioner prays that this Court may be pleased to grant an order of temporary injunction restraining the Respondent from altering the physical features of the property.
+`
+  },
+  'Vakalatnama': {
+    title: 'Vakalatnama',
+    content: `IN THE COURT OF THE MUNSIFF/SUB JUDGE OF ERNAKULAM, KERALA
+O.S. / I.A. / C.C. No. ______ of 2026
+
+Between:
+[Client Name]                                                       ... Plaintiff / Petitioner / Accused
+
+And:
+[Opposite Party Name]                                               ... Defendant / Respondent / State
+
+VAKALATNAMA (POWER OF ATTORNEY)
+
+I, [Client Name], do hereby appoint and retain [Advocate Name], Advocate, Ernakulam, to appear, plead, and act on my behalf in the above matter, to sign drafts, make applications, file compromises, and execute decrees.
+
+Executed on this ______ day of May, 2026.
+
+Accepted:
+[Advocate Signature]                                                [Client Signature/Thumb Impression]
+`
+  },
+  'Bail Application': {
+    title: 'Bail Application',
+    content: `IN THE COURT OF THE SESSIONS JUDGE, ERNAKULAM, KERALA
+Bail Appl. No. ______ of 2026
+
+Between:
+[Accused Name], S/o ______, aged __, residing at ______             ... Petitioner/Accused
+
+And:
+State of Kerala, represented by Public Prosecutor                    ... Respondent
+
+APPLICATION FOR BAIL UNDER SECTION 437 / 439 OF THE CODE OF CRIMINAL PROCEDURE, 1973
+
+The Petitioner respectfully submits:
+1. The Petitioner is arrayed as Accused No. __ in Crime No. ____ of ______ Police Station, charged under Section ____.
+2. The Petitioner is absolutely innocent, has deep roots in the community, and has been falsely implicated due to local political enmity.
+3. The Petitioner is ready to abide by any rigorous conditions imposed by this Hon'ble Court.
+
+PRAYER:
+Therefore, the Petitioner prays that this Court may be pleased to enlarge the Petitioner on bail in Crime No. ____.
+`
+  },
+  'Legal Notice': {
+    title: 'Legal Notice / Demand Notice',
+    content: `LEGAL NOTICE / DEMAND NOTICE
+
+Ref No. LN/______/2026                                              Date: 31st May, 2026
+
+To,
+[Recipient Name],
+[Recipient Address]
+
+Under instructions from my client [Client Name], residing at Kerala, I hereby serve you this Legal Notice:
+1. My client and you entered into an agreement dated ______ for ______.
+2. You have breached clause ______ of the agreement by failing to make the payment within the scheduled timeline.
+3. You are hereby called upon to comply/pay the remaining sum of Rs. ______ within 15 days from receipt of this notice, failing which legal proceedings will be initiated.
+
+Yours sincerely,
+[Advocate Name / Signature]
+`
+  },
+  'Appeal Memo': {
+    title: 'Appeal Memo',
+    content: `IN THE DISTRICT COURT OF ERNAKULAM, KERALA
+A.S. No. ______ of 2026
+
+Between:
+[Appellant Name]                                                    ... Appellant / Defendant
+
+And:
+[Respondent Name]                                                   ... Respondent / Plaintiff
+
+MEMORANDUM OF APPEAL FILED UNDER SECTION 96 OF THE CODE OF CIVIL PROCEDURE
+
+The Appellant, being aggrieved by the Judgment and Decree dated ______ in O.S. No. ______ of the Munsiff Court, Ernakulam, prefers this Appeal on the following grounds:
+1. The lower Court completely failed to appreciate the documentary evidence (Exhibit A1).
+2. The finding of the lower Court regarding Section ______ is erroneous and contrary to precedent.
+3. Ground of Court Fees: Adequate Court fees are valued and paid under the Kerala Court Fees Act.
+
+PRAYER:
+Therefore, the Appellant prays that this Hon'ble Court may be pleased to set aside the Judgment and Decree of the Munsiff Court.
+`
+  },
+  'Execution Petition': {
+    title: 'Execution Petition',
+    content: `IN THE COURT OF THE SUB JUDGE OF ERNAKULAM, KERALA
+E.P. No. ______ of 2026
+in
+O.S. No. ______ of 2026
+
+Between:
+[Decree Holder Name]                                                ... Decree Holder
+
+And:
+[Judgment Debtor Name]                                              ... Judgment Debtor
+
+EXECUTION PETITION UNDER ORDER XXI RULE 11 OF THE CODE OF CIVIL PROCEDURE
+
+The Decree Holder respectfully submits:
+1. Date of Decree: ______
+2. Amount awarded: Rs. ______
+3. Mode of Execution: By attachment and sale of the scheduled property described below.
+
+PRAYER:
+Therefore, the Decree Holder prays that the Decree be executed by attaching the property of the Judgment Debtor.
+`
+  }
+};
+
 export default function AdvocatePortal({ onBack }: { onBack: () => void }) {
   const aiEngine = HybridAIEngine.getInstance();
   const geminiLive = useGeminiLive();
@@ -297,6 +484,236 @@ export default function AdvocatePortal({ onBack }: { onBack: () => void }) {
   
   const [scanPhase, setScanPhase] = useState<'idle' | 'starting' | 'live' | 'processing' | 'done' | 'error'>('idle');
   const [scannedText, setScannedText] = useState('');
+
+  // --- F06, F07, F08, F09, F10 States and Handlers ---
+  const [isExtractingOrder, setIsExtractingOrder] = useState(false);
+  const [extractedOrderData, setExtractedOrderData] = useState<{ hearing_date?: string; court_name?: string; case_number?: string; directive?: string } | null>(null);
+  const [matchingClientId, setMatchingClientId] = useState<number | null>(null);
+  const [showExtractionConfirm, setShowExtractionConfirm] = useState(false);
+
+  const [whatsappDraft, setWhatsappDraft] = useState('');
+  const [isDraftingWhatsapp, setIsDraftingWhatsapp] = useState(false);
+  const [whatsappDraftClient, setWhatsappDraftClient] = useState<any>(null);
+  const [showWhatsappModal, setShowWhatsappModal] = useState(false);
+
+  const [isSummarising, setIsSummarising] = useState(false);
+  const [docSummary, setDocSummary] = useState('');
+
+  const [expandedClientId, setExpandedClientId] = useState<number | null>(null);
+  const [clientTasks, setClientTasks] = useState<Record<number, Task[]>>({});
+  const [newTaskTitle, setNewTaskTitle] = useState('');
+  const [offlineReminders, setOfflineReminders] = useState<Reminder[]>([]);
+  const [suggestedFileName, setSuggestedFileName] = useState('');
+  const [modalTasks, setModalTasks] = useState<any[]>([]);
+
+  // Conditional questionnaires fields
+  const [newClientHasEncroachment, setNewClientHasEncroachment] = useState<'yes' | 'no'>('no');
+  const [newClientHasRegisteredDeed, setNewClientHasRegisteredDeed] = useState<'yes' | 'no'>('no');
+  const [newClientDeedNumber, setNewClientDeedNumber] = useState('');
+  const [newClientSroName, setNewClientSroName] = useState('');
+  const [newClientIsBailable, setNewClientIsBailable] = useState<'yes' | 'no'>('yes');
+  const [newClientRemandDate, setNewClientRemandDate] = useState('');
+  const [newClientJailName, setNewClientJailName] = useState('');
+
+  // Review checkpoint screen states
+  const [showIntakeReviewCheckpoint, setShowIntakeReviewCheckpoint] = useState(false);
+  const [checkpointSourceData, setCheckpointSourceData] = useState<any>(null);
+  const [checkpointProposedDraft, setCheckpointProposedDraft] = useState('');
+  const [checkpointProposedFileName, setCheckpointProposedFileName] = useState('');
+  const [checkpointProposedTasks, setCheckpointProposedTasks] = useState<any[]>([]);
+
+  const handleToggleExpandClient = async (clientId: number, clientCaseType: string, clientNextDate: string) => {
+    if (expandedClientId === clientId) {
+      setExpandedClientId(null);
+    } else {
+      setExpandedClientId(clientId);
+      let currentTasks = await OfflineDB.getTasksForClient(clientId);
+      if (currentTasks.length === 0) {
+        const suggested = OfflineDB.generateDefaultTasks(clientId, clientCaseType, clientNextDate);
+        await OfflineDB.saveTasks(suggested);
+        currentTasks = suggested;
+      }
+      setClientTasks(prev => ({ ...prev, [clientId]: currentTasks }));
+    }
+  };
+
+  const handleToggleTask = async (task: Task) => {
+    const updatedTask = { ...task, completed: !task.completed };
+    await OfflineDB.saveTask(updatedTask);
+    setClientTasks(prev => {
+      const tasks = prev[task.clientId] || [];
+      return {
+        ...prev,
+        [task.clientId]: tasks.map(t => t.id === task.id ? updatedTask : t)
+      };
+    });
+  };
+
+  const handleAddCustomTask = async (clientId: number) => {
+    if (!newTaskTitle.trim()) return;
+    const newTask: Task = {
+      id: `task_custom_${Date.now()}`,
+      clientId,
+      title: newTaskTitle.trim(),
+      completed: false,
+      dueDate: new Date().toISOString().split('T')[0]
+    };
+    await OfflineDB.saveTask(newTask);
+
+    setClientTasks(prev => ({
+      ...prev,
+      [clientId]: [...(prev[clientId] || []), newTask]
+    }));
+    setNewTaskTitle('');
+  };
+
+  const handleDeleteTask = async (task: Task) => {
+    await OfflineDB.deleteTask(task.id);
+    setClientTasks(prev => ({
+      ...prev,
+      [task.clientId]: (prev[task.clientId] || []).filter(t => t.id !== task.id)
+    }));
+  };
+
+  const handleDraftWhatsapp = async (client: any) => {
+    setWhatsappDraftClient(client);
+    setIsDraftingWhatsapp(true);
+    setWhatsappDraft('');
+    setShowWhatsappModal(true);
+    try {
+      const res = await fetch("/api/gemini/whatsapp-draft", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: client.name,
+          caseNo: client.case_number,
+          court: client.court,
+          date: client.next_date,
+          purpose: client.purpose
+        })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setWhatsappDraft(data.draft);
+      } else {
+        setWhatsappDraft("Error generating Malayalam message. Please review backend connection.");
+      }
+    } catch (err) {
+      console.error("Draft WhatsApp error:", err);
+      setWhatsappDraft("Connection error occurred while preparing drafts in Malayalam.");
+    } finally {
+      setIsDraftingWhatsapp(false);
+    }
+  };
+
+  const handleExtractOrder = async () => {
+    if (!scannedText.trim()) return;
+    setIsExtractingOrder(true);
+    try {
+      const res = await fetch("/api/gemini/extract-order", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orderText: scannedText })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setExtractedOrderData(data);
+        let matchId: number | null = null;
+        if (data.case_number) {
+          const match = clients.find(c => {
+            const num1 = c.case_number.replace(/[^a-zA-Z0-9]/g, "").toLowerCase();
+            const num2 = data.case_number.replace(/[^a-zA-Z0-9]/g, "").toLowerCase();
+            return num1.includes(num2) || num2.includes(num1);
+          });
+          if (match) matchId = match.id;
+        }
+        setMatchingClientId(matchId || (clients.length > 0 ? clients[0].id : null));
+        setShowExtractionConfirm(true);
+      }
+    } catch (err) {
+      console.error("Order extraction failure:", err);
+    } finally {
+      setIsExtractingOrder(false);
+    }
+  };
+
+  const handleConfirmExtraction = () => {
+    if (!matchingClientId || !extractedOrderData) return;
+    const clientToUpdate = clients.find(c => c.id === matchingClientId);
+    if (!clientToUpdate) return;
+
+    const updatedClient = {
+      ...clientToUpdate,
+      case_number: extractedOrderData.case_number || clientToUpdate.case_number,
+      court: extractedOrderData.court_name || clientToUpdate.court,
+      next_date: extractedOrderData.hearing_date || clientToUpdate.next_date,
+      purpose: extractedOrderData.directive || clientToUpdate.purpose,
+      extra_fields: {
+        ...(clientToUpdate.extra_fields || {}),
+        lastActivityDate: new Date().toISOString().split('T')[0]
+      }
+    };
+
+    localDB.run(
+      "UPDATE clients SET case_number = ?, court = ?, next_date = ?, purpose = ?, extra_fields = ? WHERE id = ?",
+      [
+        updatedClient.case_number,
+        updatedClient.court,
+        updatedClient.next_date,
+        updatedClient.purpose,
+        updatedClient.extra_fields,
+        matchingClientId
+      ]
+    );
+
+    setClients(prev => prev.map(c => c.id === matchingClientId ? updatedClient : c));
+
+    // [F10-C2] SMART SCHEDULING — COURT ORDER AUTO-CREATES REMINDER
+    const newRem: Reminder = {
+      id: `rem_${Date.now()}`,
+      clientId: matchingClientId,
+      clientName: clientToUpdate.name,
+      caseNumber: extractedOrderData.case_number || clientToUpdate.case_number || "TBD/2026",
+      hearingDate: extractedOrderData.hearing_date || clientToUpdate.next_date || "2026-06-15",
+      directive: extractedOrderData.directive || clientToUpdate.purpose || "Next Case Hearing",
+      notified: false,
+      createdTime: Date.now()
+    };
+
+    OfflineDB.saveReminder(newRem).then(async () => {
+      const updatedRems = await OfflineDB.getReminders();
+      setOfflineReminders(updatedRems);
+      await checkScheduledNotifications(updatedRems);
+    });
+
+    setShowExtractionConfirm(false);
+    setExtractedOrderData(null);
+  };
+
+  const handleSummariseDoc = async () => {
+    if (!scannedText.trim()) return;
+    setIsSummarising(true);
+    setDocSummary('');
+    try {
+      const res = await fetch("/api/gemini/summarise-doc", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ docText: scannedText })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setDocSummary(data.summary);
+        
+        // Strip markdown formatting for cleaner text-to-speech
+        const cleanSpeakText = data.summary.replace(/[*#-]/g, " ").trim();
+        speakResponse({ text: cleanSpeakText, model: "AI Summariser" });
+      }
+    } catch (err) {
+      console.error("Extraction error:", err);
+    } finally {
+      setIsSummarising(false);
+    }
+  };
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -378,6 +795,393 @@ export default function AdvocatePortal({ onBack }: { onBack: () => void }) {
   }, [view, enlargedElement, geminiLive.setMuteAudio]);
 
   const [draftEditorMode, setDraftEditorMode] = useState<'edit' | 'interactive'>('interactive');
+
+  // Playbooks, Live Suggestions, and Client Questionnaire States
+  const [selectedPlaybook, setSelectedPlaybook] = useState('');
+  const [suggestionsLoading, setSuggestionsLoading] = useState(false);
+  const [standardCheckerLoading, setStandardCheckerLoading] = useState(false);
+  const [showAddClientModal, setShowAddClientModal] = useState(false);
+  const [isIntaking, setIsIntaking] = useState(false);
+
+  // Client Intake fields
+  const [newClientName, setNewClientName] = useState('');
+  const [newClientPhone, setNewClientPhone] = useState('');
+  const [newClientCaseNo, setNewClientCaseNo] = useState('');
+  const [newClientCourt, setNewClientCourt] = useState('');
+  const [newClientNextDate, setNewClientNextDate] = useState('');
+  const [newClientPurpose, setNewClientPurpose] = useState('');
+  const [newClientCaseType, setNewClientCaseType] = useState<'property' | 'criminal' | 'other'>('other');
+
+  // Case-type-specific lists
+  const [newClientSurveyNo, setNewClientSurveyNo] = useState('');
+  const [newClientBoundaries, setNewClientBoundaries] = useState('');
+  const [newClientEncroachmentDate, setNewClientEncroachmentDate] = useState('');
+  const [newClientFirNo, setNewClientFirNo] = useState('');
+  const [newClientPoliceStation, setNewClientPoliceStation] = useState('');
+  const [newClientSectionsCharged, setNewClientSectionsCharged] = useState('');
+
+  // F02 LIVE AI SUGGESTIONS: Auto-refresh suggestions panel on edits or saves
+  useEffect(() => {
+    if (view !== 'drafting') return;
+    if (!draftPages[0] || draftPages[0].trim().length < 8) return;
+    
+    const delayDebounceFn = setTimeout(async () => {
+      setSuggestionsLoading(true);
+      try {
+        const response = await fetch("/api/gemini/suggestions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ draftText: draftPages[0] })
+        });
+        if (response.ok) {
+          const data = await response.json();
+          setDraftSuggestions(data.text);
+        }
+      } catch (err) {
+        console.error("Live suggestions refresh error:", err);
+      } finally {
+        setSuggestionsLoading(false);
+      }
+    }, 2000);
+
+    return () => clearTimeout(delayDebounceFn);
+  }, [draftPages[0], view]);
+
+  // [F10-C3] Matter naming and default task seed synchronization on modal input change
+  useEffect(() => {
+    if (showAddClientModal) {
+      const suggestion = generateSuggestedFileName(newClientName, newClientCaseNo, newClientCourt, newClientCaseType);
+      setSuggestedFileName(suggestion);
+    }
+  }, [newClientName, newClientCaseNo, newClientCourt, newClientCaseType, showAddClientModal]);
+
+  useEffect(() => {
+    if (showAddClientModal) {
+      const dummyId = 999999;
+      const baseDate = newClientNextDate || "2026-06-15";
+      const suggested = OfflineDB.generateDefaultTasks(dummyId, newClientCaseType, baseDate);
+      setModalTasks(suggested.map((t, idx) => ({ ...t, tempId: idx })));
+    }
+  }, [newClientCaseType, newClientNextDate, showAddClientModal]);
+
+  // Playbook activation helper
+  const handleSelectPlaybook = (playbookKey: string) => {
+    setSelectedPlaybook(playbookKey);
+    if (PLAYBOOK_TEMPLATES[playbookKey]) {
+      setDraftPages([PLAYBOOK_TEMPLATES[playbookKey].content]);
+      setDraftModel(PLAYBOOK_TEMPLATES[playbookKey].content);
+    }
+  };
+
+  // Standard compliance checker action
+  const handleStandardCheckerClick = async () => {
+    if (!deskInput.trim()) return;
+    setStandardCheckerLoading(true);
+    const userMsg = { role: 'user', text: `Verify Clause: "${deskInput}"` };
+    setDeskChatHistory(prev => [...prev, userMsg]);
+    
+    try {
+      const response = await fetch("/api/gemini/standard-checker", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ 
+          clauseText: deskInput, 
+          documentType: selectedPlaybook || "OS Plaint" 
+        })
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        const aiMsg = { role: 'ai', text: data.text };
+        setDeskChatHistory(prev => [...prev, aiMsg]);
+        setDeskInput('');
+      } else {
+        const errorMsg = { role: 'ai', text: "⚠️ Failed to verify clause compatibility with active Indian court standards at this time." };
+        setDeskChatHistory(prev => [...prev, errorMsg]);
+      }
+    } catch (e) {
+      console.error("Standard Checker error:", e);
+      const errorMsg = { role: 'ai', text: "⚠️ Error contacting legal standards indexes. Please verify net connection." };
+      setDeskChatHistory(prev => [...prev, errorMsg]);
+    } finally {
+      setStandardCheckerLoading(false);
+    }
+  };
+
+  // Intake auto-draft submitter
+  const handleSaveClientIntake = async () => {
+    if (!newClientName.trim()) return;
+    setIsIntaking(true);
+    
+    const fieldDetails: any = {
+      surveyNumber: newClientSurveyNo,
+      hasEncroachment: newClientHasEncroachment,
+      boundaries: newClientHasEncroachment === 'yes' ? newClientBoundaries : '',
+      encroachmentDate: newClientHasEncroachment === 'yes' ? newClientEncroachmentDate : '',
+      hasRegisteredDeed: newClientHasRegisteredDeed,
+      deedNumber: newClientHasRegisteredDeed === 'yes' ? newClientDeedNumber : '',
+      sroName: newClientHasRegisteredDeed === 'yes' ? newClientSroName : '',
+      
+      firNumber: newClientFirNo,
+      policeStation: newClientPoliceStation,
+      sectionCharged: newClientSectionsCharged,
+      isBailable: newClientIsBailable,
+      remandDate: newClientIsBailable === 'no' ? newClientRemandDate : '',
+      jailName: newClientIsBailable === 'no' ? newClientJailName : ''
+    };
+    
+    let generatedDraft = "";
+    try {
+      const response = await fetch("/api/gemini/auto-draft", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          clientName: newClientName,
+          caseType: newClientCaseType,
+          fieldDetails: fieldDetails,
+          courtName: newClientCourt || "District Court, Ernakulam"
+        })
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        generatedDraft = data.text;
+      }
+    } catch (err) {
+      console.error("Intake auto-draft error:", err);
+    }
+    
+    if (!generatedDraft) {
+      generatedDraft = `IN THE COURT OF THE ${newClientCourt.toUpperCase() || 'MUNSIFF COURT OF ERNAKULAM'}, KERALA
+O.S. No. ______ / 2026
+
+In the Matter of:
+\${newClientName}                                                    ... Plaintiff/Petitioner
+
+Versus
+
+______                                                              ... Defendant/Respondent
+
+PLAINT & STATEMENT OF PLEADING FILED ON BEHALF OF THE PLAINTIFF
+
+The Plaintiff respectfully submits:
+1. Ground details for \${newClientName}.
+\${newClientCaseType === 'property' ? \`Property details: Survey No: \${newClientSurveyNo}, Encroachment: \${newClientHasEncroachment}.\` : ''}
+\${newClientCaseType === 'criminal' ? \`Criminal Case Details: FIR No: \${newClientFirNo}, PS: \${newClientPoliceStation}.\` : ''}
+
+PRAYER:
+Wherefore, the Plaintiff prays for a decree of declaration...
+`;
+    }
+
+    setCheckpointSourceData({
+      name: newClientName,
+      phone: newClientPhone,
+      caseNumber: newClientCaseNo || "TBD/2026",
+      court: newClientCourt || "District Court, Ernakulam",
+      nextDate: newClientNextDate || "2026-06-15",
+      purpose: newClientPurpose || "Initial Filing",
+      caseType: newClientCaseType,
+      fieldDetails
+    });
+    setCheckpointProposedDraft(generatedDraft);
+    setCheckpointProposedFileName(suggestedFileName || generateSuggestedFileName(newClientName, newClientCaseNo || "TBD/2026", newClientCourt || "District Court", newClientCaseType));
+    setCheckpointProposedTasks([...modalTasks]);
+
+    setShowAddClientModal(false);
+    setShowIntakeReviewCheckpoint(true);
+    setIsIntaking(false);
+  };
+
+  const handleConfirmCheckpoint = async () => {
+    if (!checkpointSourceData) return;
+
+    const extendedExtraFields = {
+      ...checkpointSourceData.fieldDetails,
+      hasDraft: true,
+      standardisedFileName: checkpointProposedFileName,
+      isFinalised: false,
+      lastActivityDate: new Date().toISOString().split('T')[0]
+    };
+
+    const newClientId = Date.now();
+    const newClient = {
+      id: newClientId,
+      name: checkpointSourceData.name,
+      phone: checkpointSourceData.phone,
+      case_number: checkpointProposedFileName || checkpointSourceData.caseNumber,
+      court: checkpointSourceData.court,
+      next_date: checkpointSourceData.nextDate,
+      purpose: checkpointSourceData.purpose,
+      case_type: checkpointSourceData.caseType,
+      extra_fields: extendedExtraFields
+    };
+
+    localDB.run("INSERT INTO clients (name, phone, case_number, court, next_date, purpose, case_type, extra_fields)", [
+      newClient.name,
+      newClient.phone,
+      newClient.case_number,
+      newClient.court,
+      newClient.next_date,
+      newClient.purpose,
+      newClient.case_type,
+      newClient.extra_fields
+    ]);
+
+    const finalTasksToSave = checkpointProposedTasks.map((t, index) => ({
+      id: `t_${newClientId}_${index + 1}`,
+      clientId: newClientId,
+      title: t.title,
+      completed: false,
+      dueDate: t.dueDate
+    }));
+
+    await OfflineDB.saveTasks(finalTasksToSave);
+    setClientTasks(prev => ({ ...prev, [newClientId]: finalTasksToSave }));
+
+    setClients(prev => [...prev, newClient]);
+    setDraftPages([checkpointProposedDraft]);
+    setDraftFacts(`Auto-drafted from Client Intake & Checkpoint. Name: ${newClient.name}, Case Classification: ${newClient.case_type}.`);
+
+    // Reset Form Fields
+    setNewClientName('');
+    setNewClientPhone('');
+    setNewClientCaseNo('');
+    setNewClientCourt('');
+    setNewClientNextDate('');
+    setNewClientPurpose('');
+    setNewClientCaseType('other');
+    setNewClientSurveyNo('');
+    setNewClientBoundaries('');
+    setNewClientEncroachmentDate('');
+    setNewClientFirNo('');
+    setNewClientPoliceStation('');
+    setNewClientSectionsCharged('');
+    setNewClientHasEncroachment('no');
+    setNewClientHasRegisteredDeed('no');
+    setNewClientDeedNumber('');
+    setNewClientSroName('');
+    setNewClientIsBailable('yes');
+    setNewClientRemandDate('');
+    setNewClientJailName('');
+
+    setShowIntakeReviewCheckpoint(false);
+    setCheckpointSourceData(null);
+    setView('drafting');
+  };
+
+  const calculateDaysLeft = (dateStr: string) => {
+    const today = new Date("2026-05-31");
+    const target = new Date(dateStr);
+    const diffTime = target.getTime() - today.getTime();
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+    return diffDays;
+  };
+
+  const getAiSuggestedAction = (purpose: string) => {
+    const p = (purpose || "").toLowerCase();
+    if (p.includes("written statement")) {
+      return "Written Statement due — Draft not yet saved. Pre-load 'Written Statement' playbook in Writing Desk.";
+    }
+    if (p.includes("bail") || p.includes("accused")) {
+      return "Bail Application critical. Verify FIR charges, load 'Bail Application' playbook, and cite precedent regarding personal liberty.";
+    }
+    if (p.includes("interlocutory") || p.includes("ia") || p.includes("petition")) {
+      return "Draft IA Petition to accompany suit. Define clear interim prayer and specify urgency in the petition header.";
+    }
+    if (p.includes("plaint")) {
+      return "Draft OS Plaint. Ensure jurisdiction details and Kerala Court Fees/Valuation schedule are fully accurate.";
+    }
+    if (p.includes("notice")) {
+      return "Legal Notice draft required. Set strict 15-day compliance time limit for the recipient.";
+    }
+    return `Review Case File & Prepare. Recommended Action: Load the custom Kerala Court playbook to structure pleadings.`;
+  };
+
+  const renderSeveritySuggestions = (suggestionsText: string) => {
+    if (!suggestionsText) return null;
+    const lines = suggestionsText.split('\n');
+    
+    const parsedSuggestions = lines.map((line, index) => {
+      const trimmed = line.trim();
+      if (!trimmed) return null;
+      
+      let severity: 'red' | 'yellow' | 'green' | null = null;
+      let cleanText = trimmed;
+      
+      if (trimmed.startsWith('[RED]')) {
+        severity = 'red';
+        cleanText = trimmed.replace('[RED]', '').trim();
+      } else if (trimmed.startsWith('[YELLOW]')) {
+        severity = 'yellow';
+        cleanText = trimmed.replace('[YELLOW]', '').trim();
+      } else if (trimmed.startsWith('[GREEN]')) {
+        severity = 'green';
+        cleanText = trimmed.replace('[GREEN]', '').trim();
+      } else if (trimmed.toLowerCase().includes('red')) {
+        severity = 'red';
+      } else if (trimmed.toLowerCase().includes('yellow')) {
+        severity = 'yellow';
+      } else if (trimmed.toLowerCase().includes('green')) {
+        severity = 'green';
+      }
+      
+      if (!severity) {
+        return (
+          <div key={index} className="text-[11px] text-slate-400 leading-relaxed mb-1.5 flex gap-1.5">
+            <span className="text-slate-600 font-medium">•</span>
+            <span>{trimmed}</span>
+          </div>
+        );
+      }
+      
+      const config = {
+        red: {
+          bg: 'bg-red-500/10 border-red-500/25 text-red-300',
+          tagBg: 'bg-red-500/20 text-red-400 border-red-500/30',
+          label: 'CRITICAL',
+          icon: <AlertTriangle size={12} className="text-red-400" />
+        },
+        yellow: {
+          bg: 'bg-amber-500/10 border-amber-500/25 text-amber-300',
+          tagBg: 'bg-amber-500/20 text-amber-400 border-amber-500/30',
+          label: 'WARNING',
+          icon: <AlertCircle size={12} className="text-amber-400" />
+        },
+        green: {
+          bg: 'bg-emerald-500/10 border-emerald-500/25 text-emerald-300',
+          tagBg: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30',
+          label: 'ENHANCEMENT',
+          icon: <Check size={12} className="text-emerald-400" />
+        }
+      }[severity];
+      
+      return (
+        <div key={index} className={`p-3 rounded-xl border ${config.bg} flex flex-col gap-1.5 shadow-sm`}>
+          <div className="flex items-center justify-between">
+            <span className={`px-2 py-0.5 rounded text-[8px] font-black tracking-widest uppercase border ${config.tagBg} flex items-center gap-1`}>
+              {config.icon}
+              {config.label}
+            </span>
+          </div>
+          <p className="text-[11px] leading-relaxed font-sans font-medium text-slate-300">{cleanText}</p>
+        </div>
+      );
+    }).filter(Boolean);
+    
+    if (parsedSuggestions.length === 0) {
+      return (
+        <div className="text-[11px] text-slate-500 italic">Reviewing pleading semantics in real-time...</div>
+      );
+    }
+    
+    return (
+      <div className="space-y-2.5">
+        {parsedSuggestions}
+      </div>
+    );
+  };
+
   const [highlightedCitationId, setHighlightedCitationId] = useState<string | null>(null);
   const [showCustomPromptPage, setShowCustomPromptPage] = useState(false);
   const [customPromptText, setCustomPromptText] = useState('');
@@ -1071,6 +1875,11 @@ export default function AdvocatePortal({ onBack }: { onBack: () => void }) {
   const [showCompatibilityBanner, setShowCompatibilityBanner] = useState(true);
   const [isBottomDrawerOpen, setIsBottomDrawerOpen] = useState(false);
   const [scrollSliderVal, setScrollSliderVal] = useState(100);
+  
+  // Collapsible accordion states for Command Center sections
+  const [isPriorityExpanded, setIsPriorityExpanded] = useState(false);
+  const [isWatchdogExpanded, setIsWatchdogExpanded] = useState(false);
+  const [isHearingDeckExpanded, setIsHearingDeckExpanded] = useState(false);
 
   const handleScrollSliderChange = (val: number) => {
     setScrollSliderVal(val);
@@ -2183,6 +2992,210 @@ Please repeat or acknowledge what they narrated to confirm you received it corre
     setMalayalamStatus(engine.getStatus());
   };
 
+  const generateSuggestedFileName = (name: string, caseNo: string, court: string, type: string) => {
+    const nameParts = name.trim().split(/\s+/);
+    const surname = nameParts.length > 1 ? nameParts[nameParts.length - 1] : (nameParts[0] || 'Client');
+    
+    const numberMatch = caseNo.match(/\d+/);
+    const numPart = numberMatch ? numberMatch[0] : 'TBD';
+    
+    let typeCode = "OS";
+    if (type === 'criminal') typeCode = "CC";
+    else if (type === 'property') typeCode = "OS";
+    else {
+      const capsMatch = caseNo.trim().toUpperCase().match(/^[A-Z]+/);
+      if (capsMatch) typeCode = capsMatch[0];
+    }
+    
+    const yearMatch = caseNo.match(/\b(202\d)\b/);
+    const year = yearMatch ? yearMatch[1] : new Date().getFullYear().toString();
+    
+    let courtShort = "Court";
+    const courtUpper = court.toUpperCase();
+    let venueName = "";
+    
+    const courtParts = court.split(/,\s*/);
+    if (courtParts.length > 1) {
+      venueName = courtParts[courtParts.length - 1].trim().replace(/\s+/g, '');
+    } else {
+      const words = court.split(/\s+/);
+      venueName = words[words.length - 1] || 'Court';
+    }
+    
+    let suffix = "HC";
+    if (courtUpper.includes("DISTRICT")) suffix = "DC";
+    else if (courtUpper.includes("MUNSIFF")) suffix = "MC";
+    else if (courtUpper.includes("MAGISTRATE")) suffix = "SJM";
+    else if (courtUpper.includes("SUB")) suffix = "Sub";
+    
+    courtShort = `${venueName}${suffix}`;
+    return `${typeCode}${numPart}-${year}-${surname}-${courtShort}`;
+  };
+
+  const getTodayPriorities = () => {
+    const priorities: Array<{
+      client: any;
+      urgencyReason: string;
+      score: number;
+      type: "draft" | "client" | "consult";
+      targetPage: "drafting" | "clients" | "feed";
+    }> = [];
+
+    const todayStr = "2026-05-31"; // Use exact system clock anchor
+    const todayMs = new Date(todayStr).getTime();
+
+    clients.forEach(c => {
+      // 1. Next Date within 7 days
+      if (c.next_date) {
+        const diffDays = Math.ceil((new Date(c.next_date).getTime() - todayMs) / (1000 * 3600 * 24));
+        if (diffDays >= 0 && diffDays <= 7) {
+          priorities.push({
+            client: c,
+            urgencyReason: `Hearing is scheduled in ${diffDays === 0 ? "TODAY" : `${diffDays} days`} (${c.next_date}). Review pleadings!`,
+            score: 100 - diffDays,
+            type: "consult",
+            targetPage: "feed"
+          });
+        }
+      }
+
+      // 2. Overdue Tasks
+      const tasks = clientTasks[c.id] || [];
+      const overdueTasks = tasks.filter(t => !t.completed && t.dueDate && t.dueDate < todayStr);
+      if (overdueTasks.length > 0) {
+        priorities.push({
+          client: c,
+          urgencyReason: `${overdueTasks.length} Overdue tasks: "${overdueTasks[0].title}" was due on ${overdueTasks[0].dueDate}`,
+          score: 80 + overdueTasks.length,
+          type: "client",
+          targetPage: "clients"
+        });
+      }
+
+      // 3. Pending draft not saved
+      if (c.extra_fields?.hasDraft && !c.extra_fields?.isFinalised) {
+        priorities.push({
+          client: c,
+          urgencyReason: `AI-generated draft is pending finalization. Access drafting workbench.`,
+          score: 70,
+          type: "draft",
+          targetPage: "drafting"
+        });
+      }
+
+      // 4. Case stagnancy check
+      const lastAct = c.extra_fields?.lastActivityDate;
+      if (!lastAct) {
+        priorities.push({
+          client: c,
+          urgencyReason: `No recent activity logged. Schedule a status update.`,
+          score: 30,
+          type: "client",
+          targetPage: "clients"
+        });
+      } else {
+        const daysSinceAct = Math.ceil((todayMs - new Date(lastAct).getTime()) / (1000 * 3600 * 24));
+        if (daysSinceAct > 14) {
+          priorities.push({
+            client: c,
+            urgencyReason: `Inactive Case: No updates recorded for ${daysSinceAct} days.`,
+            score: 20 + daysSinceAct,
+            type: "client",
+            targetPage: "clients"
+          });
+        }
+      }
+    });
+
+    priorities.sort((a, b) => b.score - a.score);
+    const uniqueClients: Record<number, boolean> = {};
+    const filtered: typeof priorities = [];
+    for (const item of priorities) {
+      if (!uniqueClients[item.client.id]) {
+        uniqueClients[item.client.id] = true;
+        filtered.push(item);
+      }
+      if (filtered.length >= 3) break;
+    }
+
+    // Default fallbacks to guarantee exact count of 3 items
+    if (filtered.length < 3) {
+      const defaultActions = [
+        {
+          id: -1,
+          name: "Standard Client Consultation",
+          court: "Lobby",
+          reason: "Schedule standard weekly folder review and calendar checks."
+        },
+        {
+          id: -2,
+          name: "Check Seeded Feed",
+          court: "Desk Desk",
+          reason: "Ensure no offline extraction items are pending schedule."
+        },
+        {
+          id: -3,
+          name: "Review Open Drafts",
+          court: "Pleading",
+          reason: "Scan plaints and statements against updated court templates."
+        }
+      ];
+
+      for (const def of defaultActions) {
+        if (filtered.length >= 3) break;
+        filtered.push({
+          client: { id: def.id, name: def.name, court: def.court },
+          urgencyReason: def.reason,
+          score: 10,
+          type: def.id === -3 ? "draft" : def.id === -1 ? "consult" : "client",
+          targetPage: def.id === -3 ? "drafting" : def.id === -1 ? "feed" : "clients"
+        });
+      }
+    }
+
+    return filtered;
+  };
+
+  const checkScheduledNotifications = async (remindersList: Reminder[]) => {
+    if (typeof window !== "undefined" && "Notification" in window) {
+      if (Notification.permission === "default") {
+        await Notification.requestPermission();
+      }
+    }
+
+    const today = new Date("2026-05-31");
+    const updatedReminders = [...remindersList];
+    let changed = false;
+
+    for (let r of updatedReminders) {
+      if (!r.notified && r.hearingDate) {
+        const hDate = new Date(r.hearingDate);
+        const diffMs = hDate.getTime() - today.getTime();
+        const diffHours = diffMs / (1000 * 60 * 60);
+
+        if (diffHours > 0 && diffHours <= 24) {
+          if (typeof window !== "undefined" && "Notification" in window && Notification.permission === "granted") {
+            try {
+              new Notification(`Upcoming Case Hearing: ${r.clientName}`, {
+                body: `The hearing for ${r.caseNumber} is on ${r.hearingDate} (within 24 hours) for: ${r.directive}.`,
+                icon: "/favicon.ico"
+              });
+            } catch (err) {
+              console.warn("Notification trigger warning:", err);
+            }
+          }
+          r.notified = true;
+          await OfflineDB.saveReminder(r);
+          changed = true;
+        }
+      }
+    }
+
+    if (changed) {
+      setOfflineReminders(updatedReminders);
+    }
+  };
+
   const handleDownloadMalayalamSTT = async () => {
     const engine = MalayalamEngine.getInstance();
     await engine.loadSTT((progress) => {
@@ -2234,21 +3247,36 @@ Please repeat or acknowledge what they narrated to confirm you received it corre
   useEffect(() => {
     const init = async () => {
       await localDB.init();
+      await OfflineDB.init();
       const savedClients = localDB.query("SELECT * FROM clients");
       if (savedClients.length > 0) {
-        setClients(savedClients);
+        const updated = savedClients.map(c => ({
+          ...c,
+          case_type: c.case_type || 'other',
+          extra_fields: typeof c.extra_fields === 'string' ? JSON.parse(c.extra_fields) : (c.extra_fields || {}),
+          next_date: c.next_date && c.next_date.startsWith('2025') ? c.next_date.replace('2025', '2026') : c.next_date
+        }));
+        setClients(updated);
       } else {
         const initial = [
-          { id: 1, name: 'Elena Rodriguez', phone: '+1 555-0199', court: 'District Court, Aluva', case_number: 'OS 145/2025', next_date: '2026-03-15', purpose: 'Filing Written Statement' },
+          { id: 1, name: 'Elena Rodriguez', phone: '+91 9445123456', court: 'Munsiff Court, Aluva', case_number: 'OS 145/2026', next_date: '2026-06-02', purpose: 'Filing Written Statement', case_type: 'other', extra_fields: { lastActivityDate: '2026-05-15' } },
+          { id: 2, name: 'Sreedharan Nair', phone: '+91 9445876543', court: 'District Court, Ernakulam', case_number: 'OS 220/2026', next_date: '2026-06-06', purpose: 'Suit for Recovery of Property / Surveying boundaries', case_type: 'property', extra_fields: { lastActivityDate: '2026-05-30', hasDraft: true, isFinalised: false, surveyNumber: "102/4A", boundaries: "East: Adarsh property, West: Public lane, North: Sreedharan Nair field, South: Canal", encroachmentDate: "2026-04-12" } },
+          { id: 3, name: 'Rahul Varma', phone: '+91 9895112233', court: 'Sub Judicial Magistrate, Kochi', case_number: 'CC 445/2026', next_date: '2026-06-15', purpose: 'Filing Criminal Bail Application under Sec 437/439', case_type: 'criminal', extra_fields: { lastActivityDate: '2026-05-28', hasDraft: true, isFinalised: true, firNumber: "124/2026", policeStation: "Kalamassery PS", sectionCharged: "IPC Section 34, 302, 324" } },
         ];
-        initial.forEach(c => {
-          localDB.run("INSERT INTO clients (name, phone, case_number, court, next_date, purpose) VALUES (?, ?, ?, ?, ?, ?)", 
-            [c.name, c.phone, c.case_number, c.court, c.next_date, c.purpose]);
-        });
+        for (const c of initial) {
+          localDB.run("INSERT INTO clients (name, phone, case_number, court, next_date, purpose, case_type, extra_fields)", 
+            [c.name, c.phone, c.case_number, c.court, c.next_date, c.purpose, c.case_type, c.extra_fields]);
+          const defaultTasks = OfflineDB.generateDefaultTasks(c.id, c.case_type, c.next_date);
+          await OfflineDB.saveTasks(defaultTasks);
+        }
         setClients(initial);
       }
       setAiStatus(aiEngine.getStatus());
       setMalayalamStatus(MalayalamEngine.getInstance().getStatus());
+
+      const savedReminders = await OfflineDB.getReminders();
+      setOfflineReminders(savedReminders);
+      await checkScheduledNotifications(savedReminders);
       
       // Auto-trigger Whisper local model download on app open
       handleDownloadWhisper();
@@ -2839,7 +3867,7 @@ Paragraph: [Detailed rationale of principle of law and application]
           </div>
           <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
             {isOffline ? (
-              aiStatus.isLocalReady ? (
+              (brain1Ready || brain2Ready) ? (
                 <div className="bg-emerald-500/10 text-emerald-400 px-4 py-1.5 rounded-full text-[10px] font-black tracking-widest flex items-center gap-2 border border-emerald-500/20">
                   <Shield size={12} /> OFFLINE MODE (LOCAL AI)
                 </div>
@@ -2853,7 +3881,7 @@ Paragraph: [Detailed rationale of principle of law and application]
                 <Shield size={12} /> CLOUD ACTIVE
               </div>
             )}
-            {aiStatus.isLocalReady ? (
+            {(brain1Ready || brain2Ready) ? (
               <div className="bg-indigo-500/10 text-indigo-400 px-4 py-1.5 rounded-full text-[10px] font-black tracking-widest flex items-center gap-2 border border-indigo-500/20">
                 <div className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" /> GEMMA 4 LOCAL ACTIVE
               </div>
@@ -2921,7 +3949,44 @@ Paragraph: [Detailed rationale of principle of law and application]
                   <div className="flex-shrink-0 flex flex-row items-stretch gap-3 h-full overflow-hidden">
                     {/* Left Column */}
                     <div id="command-left-column" onScroll={handleLeftColScroll} className="w-[calc(100vw-72px)] md:w-[400px] flex-shrink-0 snap-center flex flex-col gap-6 overflow-y-auto h-full custom-scrollbar pr-1 pb-8">
-                    <div style={S.card} className="relative overflow-hidden">
+                      {/* [F10-C1] AI TODAY'S PRIORITY CARD */}
+                      <div className="bg-slate-950/65 border-2 border-indigo-500/30 p-5 rounded-[2rem] relative overflow-hidden shadow-2xl shrink-0">
+                        {/* Background subtle mesh glow */}
+                        <div className="absolute top-0 right-0 w-36 h-36 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none" />
+                        
+                        <div className="flex justify-between items-center mb-4 pb-2 border-b border-white/5">
+                          <span className="text-[10px] font-black text-indigo-400 uppercase tracking-widest font-mono">Today's Priority (F10-C1)</span>
+                          <span className="text-[8px] bg-indigo-500/20 text-indigo-300 font-bold font-mono px-2 py-0.5 rounded-full uppercase">AI Ranked</span>
+                        </div>
+
+                        <div className="space-y-4">
+                          {getTodayPriorities().map((p, idx) => (
+                            <div key={p.client.id || idx} className="flex gap-3 items-start border-b border-white/5 pb-3 last:border-0 last:pb-0">
+                              <div className="w-5 h-5 rounded-full bg-indigo-500/15 border border-indigo-400/20 text-indigo-300 font-black text-[10px] flex items-center justify-center font-mono shrink-0 mt-0.5">
+                                {idx + 1}
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex justify-between items-start gap-2">
+                                  <h4 className="text-xs font-black text-slate-100 truncate font-sans">{p.client.name}</h4>
+                                  <span className="text-[8px] text-slate-500 shrink-0 uppercase font-mono">{p.client.court || "CHAMBERS"}</span>
+                                </div>
+                                <p className="text-[10.5px] text-indigo-200/90 mt-1 font-sans leading-relaxed">{p.urgencyReason}</p>
+                                
+                                <button 
+                                  onClick={() => {
+                                    setView(p.targetPage);
+                                  }}
+                                  className="mt-2 text-[9px] text-indigo-300 bg-indigo-500/10 hover:bg-indigo-500/25 border border-indigo-500/30 font-black font-mono px-2.5 py-1 rounded-lg uppercase transition-all flex items-center gap-1 active:scale-95"
+                                >
+                                  {p.type === 'draft' ? 'Go to Draft' : p.type === 'client' ? 'Go to Client' : 'Go to Consult'} &rarr;
+                                </button>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+
+                      <div style={S.card} className="relative overflow-hidden">
                       <div className="text-[10px] font-black text-amber-500 tracking-[0.2em] mb-2">HYBRID AI NODE</div>
                       <h2 className="text-4xl font-black italic text-slate-200 mb-8">Command<span className="text-slate-500">Center</span></h2>
                       
@@ -3148,6 +4213,172 @@ Paragraph: [Detailed rationale of principle of law and application]
                       />
                     </div>
                     <span className="text-[7px] font-black text-indigo-400 tracking-wider font-mono">{100 - scrollSliderVal}%</span>
+                  </div>
+                </div>
+
+                {/* Middle Column: Hearing Countdown (F04) & Nexus Watchdog (F08) */}
+                <div className="w-[calc(100vw-72px)] md:w-[360px] flex-shrink-0 snap-center flex flex-col gap-4 overflow-hidden border-r border-white/5 h-full pb-6">
+                  
+                  {/* Nexus Watchdog Panel */}
+                  <div style={S.card} className="flex flex-col overflow-hidden p-0 max-h-[300px] shrink-0 border-rose-500/20">
+                    <div className="px-6 py-4 border-b border-white/5 flex justify-between items-center bg-[#070b14]/80">
+                      <div className="text-[10px] font-black text-rose-400 tracking-widest uppercase flex items-center gap-1.5 font-mono">
+                        <Shield size={12} className="text-rose-400" />
+                        Nexus Watchdog
+                      </div>
+                      <span className="px-2 py-0.5 rounded-full bg-rose-400/10 border border-rose-400/20 text-rose-400 text-[8px] font-black uppercase font-mono">
+                        Active Risk Audit
+                      </span>
+                    </div>
+
+                    <div className="flex-1 overflow-y-auto p-4 space-y-2.5 custom-scrollbar bg-[#050812]/40">
+                      {(() => {
+                        const alerts: any[] = [];
+                        
+                        clients.forEach(c => {
+                          const daysLeft = calculateDaysLeft(c.next_date);
+                          const hasDraft = c.extra_fields?.hasDraft || false;
+                          const isFinalised = c.extra_fields?.isFinalised || false;
+                          const lastActivityStr = c.extra_fields?.lastActivityDate;
+                          
+                          let lastActivityDays = 99;
+                          if (lastActivityStr) {
+                            const diffTime = Date.now() - new Date(lastActivityStr).getTime();
+                            lastActivityDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+                          }
+                          
+                          // Check RED Flag: posting date within 7 days with no draft saved
+                          if (daysLeft >= 0 && daysLeft <= 7 && !hasDraft) {
+                            alerts.push({
+                              id: `red_${c.id}`,
+                              client: c,
+                              severity: 'RED',
+                              title: 'No Draft Prepared',
+                              message: `Hearing is in ${daysLeft} days, but no introductory draft has been saved.`,
+                              bgClass: 'bg-red-500/5 border-red-500/20 text-red-400'
+                            });
+                          }
+                          
+                          // Check AMBER Flag: no case activity in 14 days
+                          if (lastActivityDays >= 14) {
+                            alerts.push({
+                              id: `amber_${c.id}`,
+                              client: c,
+                              severity: 'AMBER',
+                              title: 'Zero Activity Stagnancy',
+                              message: `No manual/voice updates or drafting action for ${lastActivityDays} days.`,
+                              bgClass: 'bg-amber-500/5 border-amber-500/20 text-amber-400'
+                            });
+                          }
+                          
+                          // Check YELLOW Flag: draft exists but not finalised before hearing
+                          if (hasDraft && !isFinalised && daysLeft >= 0 && daysLeft <= 14) {
+                            alerts.push({
+                              id: `yellow_${c.id}`,
+                              client: c,
+                              severity: 'YELLOW',
+                              title: 'Unfinalised Draft Pending',
+                              message: `Draft created on pad for upcoming hearing but not marked finalized.`,
+                              bgClass: 'bg-yellow-500/5 border-yellow-500/20 text-yellow-400'
+                            });
+                          }
+                        });
+
+                        if (alerts.length === 0) {
+                          return (
+                            <div className="text-xs text-slate-500 italic text-center py-8">
+                              🟢 All systems green. No risk flags active.
+                            </div>
+                          );
+                        }
+
+                        return alerts.map(alert => (
+                          <div key={alert.id} className={`p-3 border rounded-xl space-y-1.5 shadow-sm ${alert.bgClass}`}>
+                            <div className="flex justify-between items-start gap-1">
+                              <div>
+                                <span className="text-[8px] font-mono uppercase tracking-[0.2em] font-black mr-2 opacity-80">
+                                  [{alert.severity}] {alert.title}
+                                </span>
+                                <h5 className="text-[11px] font-bold text-slate-200 mt-0.5">{alert.client.name}</h5>
+                              </div>
+                              <span className={`px-1.5 py-0.5 text-[8px] font-black rounded uppercase font-mono tracking-widest ${
+                                alert.severity === 'RED' ? 'bg-red-500/20 text-red-300 border border-red-500/30' :
+                                alert.severity === 'AMBER' ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30' :
+                                'bg-yellow-500/10 text-yellow-300 border border-yellow-500/20'
+                              }`}>
+                                {alert.severity}
+                              </span>
+                            </div>
+                            <p className="text-[10px] leading-relaxed text-slate-300">
+                              {alert.message}
+                            </p>
+                          </div>
+                        ));
+                      })()}
+                    </div>
+                  </div>
+
+                  {/* Hearing Status Deck */}
+                  <div style={S.card} className="flex-1 flex flex-col overflow-hidden p-0 max-h-[calc(100%-320px)]">
+                    <div className="px-6 py-4 border-b border-white/5 flex justify-between items-center bg-white/[0.01]">
+                      <div className="text-[10px] font-black text-indigo-400 tracking-widest uppercase flex items-center gap-1.5">
+                        <Scale size={12} className="text-indigo-400" />
+                        Hearing Status Deck
+                      </div>
+                      <span className="px-2 py-0.5 rounded-full bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 text-[8px] font-black uppercase">
+                        {clients.length} Active
+                      </span>
+                    </div>
+                    
+                    <div className="flex-1 overflow-y-auto p-6 space-y-4 custom-scrollbar bg-[#050812]/20">
+                      {clients.map(c => {
+                        const daysLeft = calculateDaysLeft(c.next_date);
+                        
+                        // Color code based on daysLeft
+                        let textClass = 'text-emerald-400 border-emerald-500/20 bg-emerald-500/5';
+                        let labelText = `${daysLeft} Days Left`;
+                        
+                        if (daysLeft < 3) {
+                          textClass = 'text-red-400 border border-red-500/20 bg-red-500/5 animate-pulse';
+                          labelText = daysLeft <= 0 ? 'Hearing Today' : `${daysLeft} Day${daysLeft > 1 ? 's' : ''} Left`;
+                        } else if (daysLeft < 7) {
+                          textClass = 'text-amber-400 border border-amber-500/25 bg-amber-500/5';
+                          labelText = `${daysLeft} Days Left`;
+                        }
+                        
+                        return (
+                          <div key={c.id} className="p-4 bg-white/[0.02] border border-white/5 hover:border-indigo-500/20 rounded-2xl transition-all space-y-3 shadow-md group">
+                            <div className="flex items-start justify-between gap-2">
+                              <div>
+                                <span className="text-[8px] font-black text-slate-500 uppercase tracking-widest block mb-0.5">{c.case_number}</span>
+                                <h4 className="text-xs font-bold text-slate-200 group-hover:text-indigo-300 transition-colors">{c.name}</h4>
+                                <span className="text-[10px] text-slate-400 mt-1 block">{c.court}</span>
+                              </div>
+                              
+                              <span className={`px-2 py-1 rounded-lg border text-[9px] font-black uppercase tracking-wider ${textClass}`}>
+                                {labelText}
+                              </span>
+                            </div>
+                            
+                            <div className="space-y-1 bg-black/30 p-2.5 rounded-xl border border-white/5">
+                              <div className="text-[8px] font-black text-slate-500 uppercase tracking-wider">Purpose of Posting</div>
+                              <div className="text-[10px] text-slate-300 font-medium leading-normal italic">"{c.purpose}"</div>
+                            </div>
+                            
+                            {/* SUGGESTED ACTION CARD */}
+                            <div className="border border-indigo-500/15 bg-indigo-500/5 p-3 rounded-xl space-y-1.5 shadow-[inset_0_1px_3px_rgba(99,102,241,0.05)]">
+                              <div className="flex items-center gap-1.5 text-[8px] font-black text-indigo-400 uppercase tracking-wider">
+                                <Zap size={10} className="text-amber-400 fill-amber-400" />
+                                AI Suggested Action
+                              </div>
+                              <p className="text-[10px] text-slate-300 leading-relaxed font-sans font-medium">
+                                {getAiSuggestedAction(c.purpose)}
+                              </p>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
                 </div>
 
@@ -3383,37 +4614,162 @@ Paragraph: [Detailed rationale of principle of law and application]
               <motion.div key="clients" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="h-full p-6 overflow-y-auto space-y-6">
                 <div className="flex justify-between items-center">
                   <h2 className="text-3xl font-black italic text-slate-200">Client <span className="text-slate-500">Registry</span></h2>
-                  <button className="bg-indigo-600 px-6 py-2.5 rounded-2xl font-black text-xs tracking-widest uppercase">Add Client</button>
+                  <button 
+                    onClick={() => setShowAddClientModal(true)} 
+                    className="bg-[#6366f1] hover:bg-[#4f46e5] text-white px-6 py-2.5 rounded-2xl font-black text-xs tracking-widest uppercase transition-all shadow-md active:scale-[0.98]"
+                  >
+                    Add Client
+                  </button>
                 </div>
                 <div style={S.card} className="overflow-hidden p-0">
                   <div className="overflow-x-auto custom-scrollbar">
                     <table className="w-full min-w-[600px] text-left">
                       <thead>
                         <tr className="border-b border-white/5">
-                          <th className="px-6 py-4 text-[9px] font-black text-slate-500 uppercase tracking-widest">Name</th>
+                          <th className="px-6 py-4 text-[9px] font-black text-slate-500 uppercase tracking-widest">Client & Contacts</th>
+                          <th className="px-6 py-4 text-[9px] font-black text-slate-500 uppercase tracking-widest">Case Type</th>
                           <th className="px-6 py-4 text-[9px] font-black text-slate-500 uppercase tracking-widest">Case Number</th>
-                          <th className="px-6 py-4 text-[9px] font-black text-slate-500 uppercase tracking-widest">Court</th>
-                          <th className="px-6 py-4 text-[9px] font-black text-slate-500 uppercase tracking-widest">Next Date</th>
-                          <th className="px-6 py-4 text-[9px] font-black text-slate-500 uppercase tracking-widest">Actions</th>
+                          <th className="px-6 py-4 text-[9px] font-black text-slate-500 uppercase tracking-widest">Court / Venue</th>
+                          <th className="px-6 py-4 text-[9px] font-black text-slate-500 uppercase tracking-widest">Next Posting Date</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-white/5">
-                        {clients.map(c => (
-                          <tr key={c.id} className="hover:bg-white/5 transition-colors">
-                            <td className="px-6 py-4">
-                              <div className="text-sm font-bold">{c.name}</div>
-                              <div className="text-[10px] text-slate-500">{c.phone}</div>
-                            </td>
-                            <td className="px-6 py-4">
-                              <span className="bg-indigo-500/10 text-indigo-400 px-2 py-1 rounded text-[10px] font-black">{c.case_number}</span>
-                            </td>
-                            <td className="px-6 py-4 text-xs text-slate-400">{c.court}</td>
-                            <td className="px-6 py-4 text-xs text-emerald-500 font-bold">{c.next_date}</td>
-                            <td className="px-6 py-4">
-                              <button className="text-slate-500 hover:text-white transition-colors"><Edit3 size={16} /></button>
-                            </td>
-                          </tr>
-                        ))}
+                        {clients.map(c => {
+                          const isExpanded = expandedClientId === c.id;
+                          return (
+                            <React.Fragment key={c.id}>
+                              <tr 
+                                onClick={() => handleToggleExpandClient(c.id, c.case_type, c.next_date)}
+                                className={`hover:bg-white/5 transition-colors cursor-pointer select-none ${isExpanded ? 'bg-white/5 border-b-none' : ''}`}
+                              >
+                                <td className="px-6 py-4">
+                                  <div className="flex items-center gap-3">
+                                    <div className="shrink-0 text-slate-500">
+                                      {isExpanded ? <ChevronUp size={16} className="text-indigo-400" /> : <ChevronDown size={16} />}
+                                    </div>
+                                    <div>
+                                      <div className="text-sm font-bold text-slate-200">{c.name}</div>
+                                      <div className="text-[10px] text-slate-500">{c.phone}</div>
+                                    </div>
+                                  </div>
+                                </td>
+                                <td className="px-6 py-4">
+                                  <span className={`px-2 py-0.5 rounded text-[9px] font-black uppercase tracking-wider ${
+                                    c.case_type === 'property' 
+                                      ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' 
+                                      : c.case_type === 'criminal'
+                                      ? 'bg-rose-500/10 text-rose-400 border border-rose-500/20'
+                                      : 'bg-indigo-500/10 text-indigo-400 border border-indigo-500/20'
+                                  }`}>
+                                    {c.case_type === 'property' ? 'Property Case' : c.case_type === 'criminal' ? 'Criminal Case' : 'Other Case'}
+                                  </span>
+                                  {c.extra_fields && typeof c.extra_fields === 'object' && Object.keys(c.extra_fields).length > 0 && (
+                                    <div className="text-[9px] text-slate-500 mt-1 space-y-0.5 max-w-[200px] whitespace-pre-wrap leading-relaxed truncate font-mono">
+                                      {c.case_type === 'property' && `Survey: ${c.extra_fields.surveyNumber || 'TBD'}`}
+                                      {c.case_type === 'criminal' && `FIR: ${c.extra_fields.firNumber || 'TBD'}`}
+                                    </div>
+                                  )}
+                                </td>
+                                <td className="px-6 py-4">
+                                  <span className="bg-indigo-500/10 text-indigo-400 px-2 py-1 rounded text-[10px] font-black font-mono">{c.case_number}</span>
+                                </td>
+                                <td className="px-6 py-4 text-xs text-slate-400">{c.court}</td>
+                                <td className="px-6 py-4 text-xs text-emerald-500 font-bold font-mono">{c.next_date}</td>
+                              </tr>
+                              
+                              {/* Expanded Client Section */}
+                              {isExpanded && (
+                                <tr className="bg-[#050812]/70 border-t border-b border-white/5 font-sans">
+                                  <td colSpan={5} className="px-8 py-6">
+                                    <div className="space-y-4 w-full">
+                                      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+                                        <div>
+                                          <div className="text-[10px] font-black text-indigo-400 uppercase tracking-widest mb-1 font-mono">CLIENT MATTER TASK CHECKLIST (F10)</div>
+                                          <p className="text-slate-400 text-xs">Standard operational checklist automatically suggested for {c.case_type === 'property' ? 'Property Matter' : c.case_type === 'criminal' ? 'Criminal Matter' : 'Civil Matter'}.</p>
+                                        </div>
+                                        
+                                        <button
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleDraftWhatsapp(c);
+                                          }}
+                                          className="flex items-center gap-1.5 px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-[10px] font-black uppercase tracking-wider transition-all duration-200 shadow-lg active:scale-[0.98]"
+                                        >
+                                          <MessageSquare size={12} />
+                                          Send Malayalam WhatsApp Update (F07)
+                                        </button>
+                                      </div>
+
+                                      {/* Task List container */}
+                                      <div className="space-y-2 bg-black/40 border border-white/5 rounded-2xl p-4 max-h-[300px] overflow-y-auto custom-scrollbar">
+                                        {(clientTasks[c.id] || []).length === 0 ? (
+                                          <div className="text-xs text-slate-500 italic py-2 flex items-center gap-2">
+                                            <div className="w-1.5 h-1.5 bg-indigo-500 rounded-full animate-ping" />
+                                            Initializing matter checklist templates...
+                                          </div>
+                                        ) : (
+                                          (clientTasks[c.id] || []).map((t: Task) => (
+                                            <div 
+                                              key={t.id} 
+                                              onClick={(e) => e.stopPropagation()}
+                                              className="flex items-center justify-between p-3 bg-white/[0.01] border border-white/5 rounded-xl hover:bg-white/[0.03] transition-colors group"
+                                            >
+                                              <label className="flex items-center gap-3 cursor-pointer select-none flex-1">
+                                                <input
+                                                  type="checkbox"
+                                                  checked={t.completed}
+                                                  onChange={() => handleToggleTask(t)}
+                                                  className="accent-[#6366f1] w-4 h-4 rounded border-white/10 bg-black/40 cursor-pointer"
+                                                />
+                                                <span className={`text-xs ${t.completed ? 'line-through text-slate-500' : 'text-slate-300 font-medium'}`}>
+                                                  {t.title}
+                                                </span>
+                                              </label>
+                                              
+                                              <div className="flex items-center gap-3">
+                                                <span className="text-[9px] font-black text-slate-500 font-mono tracking-widest uppercase bg-white/5 px-2 py-0.5 rounded border border-white/5">
+                                                  DUE: {t.dueDate}
+                                                </span>
+                                                
+                                                <button
+                                                  onClick={() => handleDeleteTask(t)}
+                                                  className="text-slate-500 hover:text-red-400 p-1 rounded transition-colors opacity-0 group-hover:opacity-100"
+                                                  title="Delete task"
+                                                >
+                                                  <Trash size={12} />
+                                                </button>
+                                              </div>
+                                            </div>
+                                          ))
+                                        )}
+                                      </div>
+
+                                      {/* Add Custom Task */}
+                                      <div onClick={(e) => e.stopPropagation()} className="flex gap-2">
+                                        <input
+                                          type="text"
+                                          placeholder="Define a custom operational task for this matter..."
+                                          value={newTaskTitle}
+                                          onChange={(e) => setNewTaskTitle(e.target.value)}
+                                          onKeyDown={(e) => {
+                                            if (e.key === 'Enter') handleAddCustomTask(c.id);
+                                          }}
+                                          className="flex-1 bg-white/5 border border-white/10 rounded-xl px-4 py-2 text-xs text-slate-200 outline-none focus:border-indigo-500/50 transition-all font-sans"
+                                        />
+                                        <button
+                                          onClick={() => handleAddCustomTask(c.id)}
+                                          className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-black text-[10px] uppercase tracking-widest transition-all shadow-md"
+                                        >
+                                          Add Task
+                                        </button>
+                                      </div>
+                                    </div>
+                                  </td>
+                                </tr>
+                              )}
+                            </React.Fragment>
+                          );
+                        })}
                       </tbody>
                     </table>
                   </div>
@@ -3495,6 +4851,29 @@ Paragraph: [Detailed rationale of principle of law and application]
                     <div className="text-[10px] font-black text-indigo-500 tracking-widest uppercase">CASE INPUTS</div>
                   </div>
                   <div className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar">
+                    {/* Kerala Court Pleading Document Playbook Dropdown [F01] */}
+                    <div className="bg-[#050914] border border-indigo-500/15 rounded-2xl p-4.5 space-y-3 shadow-[0_4px_20px_rgba(99,102,241,0.05)]">
+                      <label className="text-[9.5px] font-black text-indigo-400 uppercase tracking-widest block flex items-center gap-2">
+                        <BookOpen size={12} className="text-indigo-400" />
+                        Kerala Court Playbooks
+                      </label>
+                      <select 
+                        value={selectedPlaybook} 
+                        onChange={e => handleSelectPlaybook(e.target.value)}
+                        className="w-full bg-slate-950/80 border border-white/10 rounded-xl px-3 py-2.5 text-xs text-indigo-300 font-bold focus:border-indigo-500 outline-none select-indigo-400"
+                      >
+                        <option value="" disabled className="text-slate-600">-- Choose Document Playbook --</option>
+                        {Object.keys(PLAYBOOK_TEMPLATES).map(key => (
+                          <option key={key} value={key} className="bg-slate-950 text-indigo-300 font-medium">
+                            {PLAYBOOK_TEMPLATES[key].title}
+                          </option>
+                        ))}
+                      </select>
+                      <p className="text-[9px] text-slate-500 leading-normal font-medium">
+                        Selecting a playbook pre-loads the professional court headers, standard pleading structures, and prayer clauses automatically.
+                      </p>
+                    </div>
+
                     <div>
                       <div className="flex justify-between items-center mb-2">
                         <label className="text-[9px] font-black text-slate-500 uppercase tracking-widest block">Fact of the Case</label>
@@ -3748,19 +5127,34 @@ Paragraph: [Detailed rationale of principle of law and application]
                       </button>
                     </div>
                     <div className="flex gap-1">
-                      <button onClick={() => setEnlargedElement('suggestions')} className="p-1 text-slate-500 hover:text-emerald-400 transition-colors" title="Enlarge"><Maximize2 size={14} /></button>
-                      <button onClick={() => handleCopy(draftSuggestions)} className="p-1 text-slate-500 hover:text-white transition-colors" title="Copy" disabled={!draftSuggestions}><Copy size={14} /></button>
-                      <button onClick={handleDownloadSuggestions} className="p-1 text-slate-500 hover:text-white transition-colors" title="Download" disabled={!draftSuggestions}><Download size={14} /></button>
+                      <button onClick={() => setEnlargedElement('suggestions')} className="p-1.5 text-slate-400 hover:text-emerald-400 transition-colors flex items-center justify-center text-slate-400 hover:text-emerald-400" title="Enlarge"><Maximize2 size={16} /></button>
+                      <button onClick={() => handleCopy(draftSuggestions)} className="p-1.5 text-slate-500 hover:text-white transition-colors disabled:opacity-30" title="Copy" disabled={!draftSuggestions}><Copy size={16} /></button>
+                      <button onClick={handleDownloadSuggestions} className="p-1.5 text-slate-500 hover:text-white transition-colors disabled:opacity-30" title="Download" disabled={!draftSuggestions}><Download size={16} /></button>
                     </div>
                   </div>
                   <div className="flex-1 overflow-y-auto p-6 space-y-6 custom-scrollbar">
                     {draftSuggestions && (
-                      <div className="bg-emerald-500/5 border border-emerald-500/10 rounded-2xl p-4">
-                        <div className="text-[9px] font-black text-emerald-500 uppercase tracking-widest mb-3 flex items-center gap-2">
-                          <Info size={12} /> Improvement Points
+                      <div className="bg-[#050914]/80 border border-white/5 rounded-2xl p-4.5 space-y-3">
+                        <div className="text-[9px] font-black text-[#818cf8] uppercase tracking-widest flex items-center justify-between">
+                          <span className="flex items-center gap-1.5">
+                            <Activity size={12} className="text-indigo-400 animate-pulse" /> 
+                            AI Cortex Suggestions
+                          </span>
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            {suggestionsLoading && (
+                              <span className="text-[8.5px] text-indigo-400 font-bold animate-pulse mr-1">Auto-Refreshing...</span>
+                            )}
+                            <button 
+                              onClick={() => setEnlargedElement('suggestions')} 
+                              className="p-1 text-slate-400 hover:text-emerald-400 transition-colors flex items-center justify-center cursor-pointer" 
+                              title="Enlarge AI Suggestions"
+                            >
+                              <Maximize2 size={12} />
+                            </button>
+                          </div>
                         </div>
-                        <div className="text-[11px] text-slate-300 leading-relaxed markdown-body">
-                          <ReactMarkdown>{draftSuggestions}</ReactMarkdown>
+                        <div className="space-y-3 pt-1">
+                          {renderSeveritySuggestions(draftSuggestions)}
                         </div>
                       </div>
                     )}
@@ -3774,10 +5168,24 @@ Paragraph: [Detailed rationale of principle of law and application]
                       ))}
                     </div>
                   </div>
-                  <div className="p-6 border-t border-white/5">
+                  <div className="p-6 border-t border-white/5 space-y-3 bg-[#050914]/80">
+                    {deskInput.trim().length > 10 && (
+                      <button
+                        onClick={handleStandardCheckerClick}
+                        disabled={standardCheckerLoading}
+                        className="w-full py-2 bg-indigo-500/10 hover:bg-indigo-500 border border-indigo-500/30 text-indigo-400 hover:text-white disabled:opacity-50 rounded-xl text-[9px] font-black uppercase tracking-widest transition-all flex items-center justify-center gap-1.5"
+                      >
+                        {standardCheckerLoading ? (
+                          <RotateCcw size={12} className="animate-spin" />
+                        ) : (
+                          <Scale size={12} />
+                        )}
+                        {standardCheckerLoading ? "ANALYZING INDIAN JURISPRUDENCE..." : "IS THIS CLAUSE STANDARD?"}
+                      </button>
+                    )}
                     <div className="flex gap-2">
-                      <input value={deskInput} onChange={e => setDeskInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && sendDeskChat()} placeholder="Refine draft..." className="flex-1 bg-white/5 border border-white/10 rounded-xl px-4 py-2 text-xs" />
-                      <button onClick={sendDeskChat} className="bg-indigo-600 p-2 rounded-xl"><Send size={14} /></button>
+                      <input value={deskInput} onChange={e => setDeskInput(e.target.value)} onKeyDown={e => e.key === 'Enter' && sendDeskChat()} placeholder="Type or paste clause to check standard..." className="flex-1 bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-xs text-slate-200 outline-none focus:border-indigo-500/50 transition-colors" />
+                      <button onClick={sendDeskChat} className="bg-indigo-600 hover:bg-indigo-500 p-2.5 rounded-xl transition-all self-center text-white"><Send size={14} /></button>
                     </div>
                   </div>
                 </div>
@@ -3879,8 +5287,32 @@ Paragraph: [Detailed rationale of principle of law and application]
                         {scanPhase === 'live' ? 'Capture & Read' : 'Start Camera'}
                       </button>
                       {scannedText && (
-                        <button onClick={() => speakResponse({ text: scannedText, model: "OCR" })} className="p-4 bg-indigo-600 rounded-2xl">
+                        <button 
+                          onClick={() => speakResponse({ text: scannedText, model: "OCR" })} 
+                          className="p-4 bg-indigo-600 rounded-2xl hover:bg-indigo-500 transition-all flex items-center justify-center text-white" 
+                          title="Read Aloud"
+                        >
                           <Volume2 size={24} />
+                        </button>
+                      )}
+                      {scannedText && (
+                        <button 
+                          onClick={handleSummariseDoc}
+                          disabled={isSummarising}
+                          className="p-4 bg-indigo-600 rounded-2xl hover:bg-indigo-500 transition-all flex items-center justify-center text-white"
+                          title="Summarise (F09)"
+                        >
+                          {isSummarising ? <RotateCcw size={24} className="animate-spin text-white" /> : <BookOpen size={24} />}
+                        </button>
+                      )}
+                      {scannedText && (
+                        <button 
+                          onClick={handleExtractOrder}
+                          disabled={isExtractingOrder}
+                          className="p-4 bg-amber-500 hover:bg-amber-600 transition-all flex items-center justify-center text-black font-black"
+                          title="Extract Hearing details to Case (F06)"
+                        >
+                          {isExtractingOrder ? <RotateCcw size={24} className="animate-spin text-black" /> : <Scale size={24} />}
                         </button>
                       )}
                       {scannedText && (
@@ -3890,7 +5322,7 @@ Paragraph: [Detailed rationale of principle of law and application]
                             setView('drafting');
                             setEnlargedElement('facts');
                           }} 
-                          className="p-4 bg-emerald-600 rounded-2xl"
+                          className="p-4 bg-emerald-600 rounded-2xl hover:bg-emerald-500 transition-all flex items-center justify-center text-white"
                           title="Send to Drafting Facts"
                         >
                           <Plus size={24} />
@@ -3898,12 +5330,21 @@ Paragraph: [Detailed rationale of principle of law and application]
                       )}
                     </div>
                   </div>
-                  <div className="w-[calc(100vw-72px)] md:w-auto md:flex-1 flex-shrink-0 snap-center bg-slate-900/50 border border-white/5 rounded-3xl p-6 overflow-y-auto relative">
+                  <div className="w-[calc(100vw-72px)] md:w-auto md:flex-1 flex-shrink-0 snap-center bg-slate-900/50 border border-white/5 rounded-3xl p-6 overflow-y-auto relative custom-scrollbar flex flex-col">
                     <div className="flex justify-between items-center mb-4">
                       <div className="text-[10px] font-black uppercase tracking-widest text-emerald-500 font-mono">Extracted Text</div>
-                      {scannedText && <button onClick={() => setScannedText("")} className="text-slate-500 hover:text-white text-[10px] uppercase font-black tracking-widest font-sans">Clear</button>}
+                      {scannedText && <button onClick={() => { setScannedText(""); setDocSummary(""); }} className="text-slate-500 hover:text-white text-[10px] uppercase font-black tracking-widest font-sans">Clear</button>}
                     </div>
-                    <div className="text-sm text-slate-400 font-mono leading-relaxed whitespace-pre-wrap">{scannedText || "Waiting for capture..."}</div>
+                    <div className="text-sm text-slate-400 font-mono leading-relaxed whitespace-pre-wrap flex-1">{scannedText || "Waiting for capture..."}</div>
+                    
+                    {docSummary && (
+                      <div className="mt-6 pt-6 border-t border-white/5 space-y-3 shrink-0">
+                        <div className="text-[10px] font-black uppercase tracking-widest text-indigo-400 font-mono">AI Summary [F09]</div>
+                        <div className="bg-indigo-500/5 border border-indigo-500/10 p-5 rounded-2xl text-slate-300 text-xs leading-relaxed font-sans max-h-[220px] overflow-y-auto custom-scrollbar">
+                          <ReactMarkdown>{docSummary}</ReactMarkdown>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
               </motion.div>
@@ -4986,6 +6427,965 @@ Paragraph: [Detailed rationale of principle of law and application]
                 </div>
               </div>
             </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* CLIENT INTAKE & AUTO DRAFT MODAL [F03] */}
+      <AnimatePresence>
+        {showAddClientModal && (
+          <motion.div 
+            initial={{ opacity: 0 }} 
+            animate={{ opacity: 1 }} 
+            exit={{ opacity: 0 }} 
+            className="fixed inset-0 bg-slate-950/95 backdrop-blur-md z-[600] flex items-center justify-center p-4 overflow-y-auto"
+          >
+            <motion.div 
+              initial={{ scale: 0.95, y: 15 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.95, y: 15 }}
+              className="max-w-xl w-full bg-[#0a0f1d] border border-white/10 rounded-3xl overflow-hidden shadow-2xl flex flex-col max-h-[90vh]"
+            >
+              {/* Header */}
+              <div className="p-6 border-b border-white/5 flex justify-between items-center bg-white/[0.01]">
+                <div>
+                  <div className="text-[9px] font-black text-[#818cf8] tracking-widest uppercase mb-1">INTAKE QUESTIONNAIRE</div>
+                  <h3 className="text-xl font-black text-slate-100 italic">Add Client & Auto Draft</h3>
+                </div>
+                <button 
+                  onClick={() => setShowAddClientModal(false)}
+                  className="p-2 bg-white/5 hover:bg-white/10 rounded-xl text-slate-400 transition-all hover:text-white"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+
+              {/* Form Scrollable Body */}
+              <div className="flex-1 p-6 overflow-y-auto space-y-5 custom-scrollbar">
+                
+                {/* Basic Details Section */}
+                <div className="space-y-3">
+                  <div className="text-[10px] font-black text-slate-500 tracking-wider uppercase border-b border-white/5 pb-1">Basic Contact & Case Details</div>
+                  
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block font-sans">Client Full Name</label>
+                      <input 
+                        type="text" 
+                        value={newClientName} 
+                        onChange={e => setNewClientName(e.target.value)}
+                        placeholder="e.g. Sreedharan Nair" 
+                        className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-xs text-slate-200 outline-none focus:border-indigo-500/50 transition-colors"
+                      />
+                    </div>
+                    
+                    <div className="space-y-1">
+                      <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block font-sans">Phone Number</label>
+                      <input 
+                        type="text" 
+                        value={newClientPhone} 
+                        onChange={e => setNewClientPhone(e.target.value)}
+                        placeholder="e.g. +91 9445876543" 
+                        className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-xs text-slate-200 outline-none focus:border-indigo-500/50 transition-colors"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block font-sans">Hearing / Posting Date</label>
+                      <input 
+                        type="date" 
+                        value={newClientNextDate} 
+                        onChange={e => setNewClientNextDate(e.target.value)}
+                        className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-xs text-slate-400 outline-none focus:border-indigo-500/50 transition-colors"
+                      />
+                    </div>
+                    
+                    <div className="space-y-1">
+                      <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block font-sans">Target Court Venue</label>
+                      <input 
+                        type="text" 
+                        value={newClientCourt} 
+                        onChange={e => setNewClientCourt(e.target.value)}
+                        placeholder="e.g. District Court, Ernakulam" 
+                        className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-xs text-slate-200 outline-none focus:border-indigo-500/50 transition-colors"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block font-sans">Case Index Number</label>
+                      <input 
+                        type="text" 
+                        value={newClientCaseNo} 
+                        onChange={e => setNewClientCaseNo(e.target.value)}
+                        placeholder="e.g. OS 220/2026" 
+                        className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-xs text-slate-200 outline-none focus:border-indigo-500/50 transition-colors"
+                      />
+                    </div>
+
+                    <div className="space-y-1">
+                      <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block font-sans">Purpose of Posting</label>
+                      <input 
+                        type="text" 
+                        value={newClientPurpose} 
+                        onChange={e => setNewClientPurpose(e.target.value)}
+                        placeholder="e.g. Filing Written Statement" 
+                        className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-xs text-slate-200 outline-none focus:border-indigo-500/50 transition-colors"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                {/* Case Type specific selector */}
+                <div className="space-y-3">
+                  <div className="text-[10px] font-black text-slate-500 tracking-wider uppercase border-b border-white/5 pb-1">Literary Case Classification</div>
+                  
+                  <div className="flex gap-4">
+                    <label className="flex items-center gap-2 text-xs font-bold text-slate-300 cursor-pointer font-sans select-none">
+                      <input 
+                        type="radio" 
+                        name="case_classification" 
+                        value="property" 
+                        checked={newClientCaseType === 'property'}
+                        onChange={() => setNewClientCaseType('property')}
+                        className="accent-[#6366f1]"
+                      />
+                      Property Title Dispute
+                    </label>
+                    <label className="flex items-center gap-2 text-xs font-bold text-slate-300 cursor-pointer font-sans select-none">
+                      <input 
+                        type="radio" 
+                        name="case_classification" 
+                        value="criminal" 
+                        checked={newClientCaseType === 'criminal'}
+                        onChange={() => setNewClientCaseType('criminal')}
+                        className="accent-[#6366f1]"
+                      />
+                      Criminal Defense
+                    </label>
+                    <label className="flex items-center gap-2 text-xs font-bold text-slate-300 cursor-pointer font-sans select-none">
+                      <input 
+                        type="radio" 
+                        name="case_classification" 
+                        value="other" 
+                        checked={newClientCaseType === 'other'}
+                        onChange={() => setNewClientCaseType('other')}
+                        className="accent-[#6366f1]"
+                      />
+                      Other Civil/General
+                    </label>
+                  </div>
+                </div>
+
+                {/* Case-type Specific Questions [F10-C5] */}
+                {newClientCaseType === 'property' && (
+                  <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="bg-emerald-500/5 border border-emerald-500/10 p-5 rounded-2xl space-y-4 shadow-md">
+                    <div className="text-[9.5px] font-black text-emerald-400 tracking-widest uppercase flex items-center gap-1.5 mb-1 bg-emerald-500/10 inline-block px-1.5 py-0.5 rounded border border-emerald-500/20">
+                      <Scale size={11} /> Property Litigation Blueprint
+                    </div>
+                    
+                    <div className="space-y-3">
+                      <div className="space-y-1">
+                        <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block font-sans">Survey Number / Re-Survey No.</label>
+                        <input 
+                          type="text" 
+                          value={newClientSurveyNo} 
+                          onChange={e => setNewClientSurveyNo(e.target.value)}
+                          placeholder="e.g. Sy. No. 102/4A of Aluva Village" 
+                          className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-xs text-slate-200 outline-none focus:border-emerald-500/50 transition-colors"
+                        />
+                      </div>
+                      
+                      <div className="space-y-1">
+                        <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block font-sans mb-1">Has Encroachment Occurred?</label>
+                        <div className="flex gap-4">
+                          <label className="flex items-center gap-2 text-xs text-slate-300 cursor-pointer font-sans select-none">
+                            <input 
+                              type="radio" 
+                              name="encroachment_radio" 
+                              value="yes"
+                              checked={newClientHasEncroachment === 'yes'}
+                              onChange={() => setNewClientHasEncroachment('yes')}
+                              className="accent-emerald-500"
+                            />
+                            Yes (Show details)
+                          </label>
+                          <label className="flex items-center gap-2 text-xs text-slate-300 cursor-pointer font-sans select-none">
+                            <input 
+                              type="radio" 
+                              name="encroachment_radio" 
+                              value="no"
+                              checked={newClientHasEncroachment === 'no'}
+                              onChange={() => setNewClientHasEncroachment('no')}
+                              className="accent-emerald-500"
+                            />
+                            No
+                          </label>
+                        </div>
+                      </div>
+
+                      {newClientHasEncroachment === 'yes' && (
+                        <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} className="space-y-3 pl-3 border-l-2 border-emerald-500/30">
+                          <div className="space-y-1">
+                            <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block font-sans">Encroachment Date / Cause of Action</label>
+                            <input 
+                              type="date" 
+                              value={newClientEncroachmentDate} 
+                              onChange={e => setNewClientEncroachmentDate(e.target.value)}
+                              className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-xs text-slate-400 outline-none focus:border-emerald-500/50 transition-colors"
+                            />
+                          </div>
+                          
+                          <div className="space-y-1">
+                            <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block font-sans">Encroached Portion & Boundary Description</label>
+                            <textarea 
+                              value={newClientBoundaries} 
+                              onChange={e => setNewClientBoundaries(e.target.value)}
+                              placeholder="e.g. East: Adarsh land, West: Public lane, North: Encroached strip, South: Canal" 
+                              className="w-full h-18 bg-black/40 border border-white/10 rounded-xl p-3 text-xs text-slate-300 outline-none focus:border-emerald-500/50 transition-colors resize-none custom-scrollbar"
+                            />
+                          </div>
+                        </motion.div>
+                      )}
+
+                      <div className="space-y-1 pt-1">
+                        <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block font-sans mb-1">Registered Deed Available?</label>
+                        <div className="flex gap-4">
+                          <label className="flex items-center gap-2 text-xs text-slate-300 cursor-pointer font-sans select-none">
+                            <input 
+                              type="radio" 
+                              name="registered_deed_radio" 
+                              value="yes"
+                              checked={newClientHasRegisteredDeed === 'yes'}
+                              onChange={() => setNewClientHasRegisteredDeed('yes')}
+                              className="accent-emerald-500"
+                            />
+                            Yes (Enter details)
+                          </label>
+                          <label className="flex items-center gap-2 text-xs text-slate-300 cursor-pointer font-sans select-none">
+                            <input 
+                              type="radio" 
+                              name="registered_deed_radio" 
+                              value="no"
+                              checked={newClientHasRegisteredDeed === 'no'}
+                              onChange={() => setNewClientHasRegisteredDeed('no')}
+                              className="accent-emerald-500"
+                            />
+                            No
+                          </label>
+                        </div>
+                      </div>
+
+                      {newClientHasRegisteredDeed === 'yes' && (
+                        <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} className="grid grid-cols-1 sm:grid-cols-2 gap-3 pl-3 border-l-2 border-emerald-500/30">
+                          <div className="space-y-1">
+                            <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block font-sans">Deed Number / Doc No.</label>
+                            <input 
+                              type="text" 
+                              value={newClientDeedNumber} 
+                              onChange={e => setNewClientDeedNumber(e.target.value)}
+                              placeholder="e.g. Doc 2450/2024"
+                              className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-xs text-slate-200 outline-none focus:border-emerald-500/50 transition-colors"
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block font-sans">Sub Registrar Office (SRO)</label>
+                            <input 
+                              type="text" 
+                              value={newClientSroName} 
+                              onChange={e => setNewClientSroName(e.target.value)}
+                              placeholder="e.g. Ernakulam SRO"
+                              className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-xs text-slate-200 outline-none focus:border-emerald-500/50 transition-colors"
+                            />
+                          </div>
+                        </motion.div>
+                      )}
+                    </div>
+                  </motion.div>
+                )}
+
+                {newClientCaseType === 'criminal' && (
+                  <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="bg-red-500/5 border border-red-500/10 p-5 rounded-2xl space-y-4 shadow-md">
+                    <div className="text-[9.5px] font-black text-red-400 tracking-widest uppercase flex items-center gap-1.5 mb-1 bg-red-500/10 inline-block px-1.5 py-0.5 rounded border border-red-500/20">
+                      <Scale size={11} /> Criminal Offense Blueprint
+                    </div>
+                    
+                    <div className="space-y-3">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div className="space-y-1">
+                          <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block font-sans">FIR Number & Year</label>
+                          <input 
+                            type="text" 
+                            value={newClientFirNo} 
+                            onChange={e => setNewClientFirNo(e.target.value)}
+                            placeholder="e.g. FIR No. 124/2026" 
+                            className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-xs text-slate-200 outline-none focus:border-red-500/50 transition-colors"
+                          />
+                        </div>
+                        
+                        <div className="space-y-1">
+                          <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block font-sans">Police Station Jurisdiction</label>
+                          <input 
+                            type="text" 
+                            value={newClientPoliceStation} 
+                            onChange={e => setNewClientPoliceStation(e.target.value)}
+                            placeholder="e.g. Kalamassery Police Station" 
+                            className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-xs text-slate-200 outline-none focus:border-red-500/50 transition-colors"
+                          />
+                        </div>
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block font-sans">Sections/Charges Pressed</label>
+                        <input 
+                          type="text" 
+                          value={newClientSectionsCharged} 
+                          onChange={e => setNewClientSectionsCharged(e.target.value)}
+                          placeholder="e.g. IPC Section 302, 324, 34" 
+                          className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-xs text-slate-200 outline-none focus:border-red-500/50 transition-colors"
+                        />
+                      </div>
+
+                      <div className="space-y-1">
+                        <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block font-sans mb-1">Is the Offense Bailable?</label>
+                        <div className="flex gap-4">
+                          <label className="flex items-center gap-2 text-xs text-slate-300 cursor-pointer font-sans select-none">
+                            <input 
+                              type="radio" 
+                              name="bailable_radio" 
+                              value="yes"
+                              checked={newClientIsBailable === 'yes'}
+                              onChange={() => setNewClientIsBailable('yes')}
+                              className="accent-rose-500"
+                            />
+                            Yes (Bailable)
+                          </label>
+                          <label className="flex items-center gap-2 text-xs text-slate-300 cursor-pointer font-sans select-none">
+                            <input 
+                              type="radio" 
+                              name="bailable_radio" 
+                              value="no"
+                              checked={newClientIsBailable === 'no'}
+                              onChange={() => setNewClientIsBailable('no')}
+                              className="accent-rose-500"
+                            />
+                            No (Non-Bailable Custody)
+                          </label>
+                        </div>
+                      </div>
+
+                      {newClientIsBailable === 'no' && (
+                        <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} className="grid grid-cols-1 sm:grid-cols-2 gap-3 pl-3 border-l-2 border-red-500/30">
+                          <div className="space-y-1">
+                            <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block font-sans">Remand Date</label>
+                            <input 
+                              type="date" 
+                              value={newClientRemandDate} 
+                              onChange={e => setNewClientRemandDate(e.target.value)}
+                              className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-xs text-slate-400 outline-none focus:border-red-500/50 transition-colors"
+                            />
+                          </div>
+                          <div className="space-y-1">
+                            <label className="text-[9px] font-black text-slate-400 uppercase tracking-widest block font-sans">Jail/Detention Centre Name</label>
+                            <input 
+                              type="text" 
+                              value={newClientJailName} 
+                              onChange={e => setNewClientJailName(e.target.value)}
+                              placeholder="e.g. Kakkanad Sub Jail"
+                              className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-xs text-slate-200 outline-none focus:border-red-500/50 transition-colors"
+                            />
+                          </div>
+                        </motion.div>
+                      )}
+                    </div>
+                  </motion.div>
+                )}
+
+                {/* [F10-C3] Standardized Matter File Name Suggestion Panel */}
+                <div className="bg-slate-900 border border-indigo-500/10 p-4 rounded-2xl space-y-2">
+                  <div className="flex justify-between items-center">
+                    <span className="text-[10px] font-black text-indigo-400 uppercase tracking-widest font-mono">Suggested Matter File Name (F10-C3)</span>
+                    <span className="text-[9px] bg-indigo-500/10 px-2 py-0.5 text-indigo-300 rounded font-bold font-mono">Auto Standardised</span>
+                  </div>
+                  <input 
+                    type="text" 
+                    value={suggestedFileName}
+                    onChange={e => setSuggestedFileName(e.target.value)}
+                    className="w-full bg-black/40 border border-white/10 rounded-xl px-3 py-2 text-xs text-slate-200 outline-none focus:border-indigo-500/50 transition-colors font-mono font-bold"
+                  />
+                  <p className="text-[9px] text-slate-500 font-sans leading-tight">Interactive structure formula: <code>{`{CaseType}{CaseNo}-{Year}-{ClientSurname}-{CourtShortCode}`}</code>.</p>
+                </div>
+
+                {/* [F10-C3] Suggested Task Sequence Sequence Panel */}
+                <div className="bg-slate-900 border border-indigo-500/10 p-4 rounded-2xl space-y-3">
+                  <div className="flex justify-between items-center border-b border-white/5 pb-2">
+                    <span className="text-[10px] font-black text-indigo-400 uppercase tracking-widest font-mono">Prefilled Critical Action Checklist</span>
+                    <button 
+                      type="button"
+                      onClick={() => {
+                        setModalTasks(prev => [...prev, { title: "New Critical Action Item", dueDate: newClientNextDate || "2026-06-15", tempId: Date.now() }]);
+                      }}
+                      className="text-[9.5px] bg-[#6366f1]/15 hover:bg-[#6366f1]/25 border border-indigo-500/20 px-2.5 py-1 text-indigo-400 rounded-lg font-black font-mono transition-all uppercase"
+                    >
+                      + Add Task
+                    </button>
+                  </div>
+                  <div className="space-y-2 max-h-[160px] overflow-y-auto custom-scrollbar pr-1">
+                    {modalTasks.length === 0 ? (
+                      <p className="text-[10px] text-slate-500 italic">No tasks specified in this sequence.</p>
+                    ) : (
+                      modalTasks.map((t, idx) => (
+                        <div key={t.tempId || idx} className="flex gap-2 items-center bg-black/20 px-3 py-2 rounded-xl border border-white/5">
+                          <input 
+                            type="text" 
+                            value={t.title} 
+                            onChange={e => {
+                              const updated = [...modalTasks];
+                              updated[idx].title = e.target.value;
+                              setModalTasks(updated);
+                            }}
+                            className="flex-1 bg-transparent text-xs text-slate-300 outline-none border-b border-transparent focus:border-indigo-500/30 pb-0.5"
+                            placeholder="Task outline"
+                          />
+                          <input 
+                            type="date" 
+                            value={t.dueDate} 
+                            onChange={e => {
+                              const updated = [...modalTasks];
+                              updated[idx].dueDate = e.target.value;
+                              setModalTasks(updated);
+                            }}
+                            className="bg-transparent text-[10px] text-slate-400 outline-none border-b border-transparent focus:border-indigo-500/30 pb-0.5 font-mono cursor-pointer"
+                          />
+                          <button 
+                            type="button"
+                            onClick={() => {
+                              setModalTasks(prev => prev.filter((_, i) => i !== idx));
+                            }}
+                            className="p-1 hover:bg-rose-500/10 rounded-lg text-rose-500 transition-colors shrink-0"
+                          >
+                            <Trash size={12} />
+                          </button>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+
+              </div>
+
+              {/* Action Buttons Footer */}
+              <div className="p-6 border-t border-white/5 flex gap-3 bg-white/[0.01]">
+                <button 
+                  onClick={() => setShowAddClientModal(false)}
+                  className="flex-1 py-3 border border-white/10 rounded-xl font-bold text-xs tracking-wider uppercase text-slate-400 hover:text-white hover:bg-white/5 transition-all"
+                >
+                  Cancel
+                </button>
+                <button 
+                  onClick={handleSaveClientIntake}
+                  disabled={isIntaking}
+                  className="flex-1 py-3 bg-[#6366f1] hover:bg-[#4f46e5] text-white rounded-xl font-black text-xs tracking-widest uppercase transition-all shadow-md active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                >
+                  {isIntaking ? (
+                    <>
+                      <RotateCcw size={12} className="animate-spin" />
+                      AUTO DRAFTING PAGE 1...
+                    </>
+                  ) : (
+                    <>
+                      <Zap size={12} />
+                      Save & Draft Page 1
+                    </>
+                  )}
+                </button>
+              </div>
+
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* AI SIDE-BY-SIDE REVIEW CHECKPOINT OVERLAY (F10-C4) */}
+      <AnimatePresence>
+        {showIntakeReviewCheckpoint && checkpointSourceData && (
+          <motion.div 
+            initial={{ opacity: 0 }} 
+            animate={{ opacity: 1 }} 
+            exit={{ opacity: 0 }} 
+            className="fixed inset-0 bg-slate-950/95 backdrop-blur-md z-[650] flex items-center justify-center p-4 md:p-8"
+          >
+            <motion.div 
+              initial={{ scale: 0.95, y: 15 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.95, y: 15 }}
+              className="max-w-6xl w-full bg-[#0a0f1d] border border-white/10 rounded-3xl overflow-hidden shadow-2xl flex flex-col max-h-[90vh]"
+            >
+              {/* Header */}
+              <div className="p-6 border-b border-white/5 flex justify-between items-center bg-white/[0.01]">
+                <div>
+                  <div className="text-[9px] font-black text-indigo-400 tracking-widest uppercase mb-1 font-mono">F10-C4 AI INTEL REVIEW CHECKPOINT</div>
+                  <h3 className="text-xl font-black text-slate-100 italic">Verify Proposed Matter & Draft Details</h3>
+                </div>
+                <button 
+                  onClick={() => setShowIntakeReviewCheckpoint(false)}
+                  className="p-2 bg-white/5 hover:bg-white/10 rounded-xl text-slate-400 transition-all hover:text-white"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+
+              {/* S-b-S Body */}
+              <div className="flex-1 p-6 overflow-y-auto grid grid-cols-1 md:grid-cols-2 gap-6 custom-scrollbar">
+                
+                {/* Left Side: Source Intake Form Badges & Answers */}
+                <div className="flex flex-col space-y-4">
+                  <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest block font-mono font-sans">Source Intake Answers (LEFT)</span>
+                  
+                  <div className="bg-slate-950/40 border border-white/5 p-5 rounded-2xl space-y-3">
+                    <div>
+                      <span className="text-[9px] font-bold text-indigo-400 uppercase tracking-wider font-mono">Client Full Name</span>
+                      <p className="text-sm font-bold text-slate-200 mt-0.5">{checkpointSourceData.name}</p>
+                    </div>
+                    <div>
+                      <span className="text-[9px] font-bold text-indigo-400 uppercase tracking-wider font-mono">Contact Phone Number</span>
+                      <p className="text-xs text-slate-400 mt-0.5">{checkpointSourceData.phone}</p>
+                    </div>
+                    <div>
+                      <span className="text-[9px] font-bold text-indigo-400 uppercase tracking-wider font-mono">Target Court Venue</span>
+                      <p className="text-xs text-slate-300 mt-0.5 font-sans">{checkpointSourceData.court}</p>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <span className="text-[9px] font-bold text-indigo-400 uppercase tracking-wider font-mono">Index Case Number</span>
+                        <p className="text-xs text-slate-300 mt-0.5 font-mono">{checkpointSourceData.caseNumber}</p>
+                      </div>
+                      <div>
+                        <span className="text-[9px] font-bold text-indigo-400 uppercase tracking-wider font-mono">Hearing Date</span>
+                        <p className="text-xs text-emerald-400 mt-0.5 font-mono font-bold">{checkpointSourceData.nextDate}</p>
+                      </div>
+                    </div>
+                    <div>
+                      <span className="text-[9px] font-bold text-indigo-400 uppercase tracking-wider font-mono">Purpose of Posting</span>
+                      <p className="text-xs text-slate-400 mt-0.5">{checkpointSourceData.purpose}</p>
+                    </div>
+                    <div>
+                      <span className="text-[9px] font-bold text-indigo-400 uppercase tracking-wider font-mono">Matter Classification Type</span>
+                      <span className="block mt-1 uppercase font-mono tracking-widest text-[10px] bg-indigo-500/10 border border-indigo-500/20 px-2.5 py-1 rounded w-max text-indigo-300 font-bold">
+                        {checkpointSourceData.caseType}
+                      </span>
+                    </div>
+
+                    {/* Conditional structured metadata branch rendering */}
+                    {checkpointSourceData.caseType === 'property' && (
+                      <div className="pt-2 border-t border-white/5 space-y-2.5 border-emerald-500/20">
+                        <span className="text-[9.5px] font-black text-emerald-400 uppercase tracking-widest font-mono">Property Questionnaire Path</span>
+                        <div>
+                          <span className="text-[8px] font-bold text-slate-500 uppercase font-mono font-sans">Survey / Re-Survey Number</span>
+                          <p className="text-xs text-slate-300">{checkpointSourceData.fieldDetails.surveyNumber || "[N/A]"}</p>
+                        </div>
+                        <div>
+                          <span className="text-[8px] font-bold text-slate-500 uppercase font-mono font-sans">Encroachment Reported?</span>
+                          <p className="text-xs text-slate-300 uppercase font-mono font-bold">{checkpointSourceData.fieldDetails.hasEncroachment || "no"}</p>
+                        </div>
+                        {checkpointSourceData.fieldDetails.hasEncroachment === 'yes' && (
+                          <>
+                            <div>
+                              <span className="text-[8px] font-bold text-slate-500 uppercase font-mono font-sans">Encroachment Date</span>
+                              <p className="text-xs text-slate-300 font-mono">{checkpointSourceData.fieldDetails.encroachmentDate || "[N/A]"}</p>
+                            </div>
+                            <div>
+                              <span className="text-[8px] font-bold text-slate-500 uppercase font-mono font-sans">Boundaries Definement</span>
+                              <p className="text-xs text-slate-400 whitespace-pre-line">{checkpointSourceData.fieldDetails.boundaries || "[N/A]"}</p>
+                            </div>
+                          </>
+                        )}
+                        <div>
+                          <span className="text-[8px] font-bold text-slate-500 uppercase font-mono font-sans">Deed Registration Supplied?</span>
+                          <p className="text-xs text-slate-300 uppercase font-mono font-bold">{checkpointSourceData.fieldDetails.hasRegisteredDeed || "no"}</p>
+                        </div>
+                        {checkpointSourceData.fieldDetails.hasRegisteredDeed === 'yes' && (
+                          <div className="grid grid-cols-2 gap-2">
+                            <div>
+                              <span className="text-[8px] font-bold text-slate-500 uppercase font-mono font-sans">Deed No.</span>
+                              <p className="text-xs text-slate-300 font-mono">{checkpointSourceData.fieldDetails.deedNumber || "[N/A]"}</p>
+                            </div>
+                            <div>
+                              <span className="text-[8px] font-bold text-slate-500 uppercase font-mono font-sans">SRO Name</span>
+                              <p className="text-xs text-slate-300">{checkpointSourceData.fieldDetails.sroName || "[N/A]"}</p>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {checkpointSourceData.caseType === 'criminal' && (
+                      <div className="pt-2 border-t border-white/5 space-y-2.5 border-rose-500/20">
+                        <span className="text-[9.5px] font-black text-rose-400 uppercase tracking-widest font-mono">Criminal Questionnaire Path</span>
+                        <div className="grid grid-cols-2 gap-2">
+                          <div>
+                            <span className="text-[8px] font-bold text-slate-500 uppercase font-mono font-sans font-sans">FIR No.</span>
+                            <p className="text-xs text-slate-300 font-mono">{checkpointSourceData.fieldDetails.firNumber || "[N/A]"}</p>
+                          </div>
+                          <div>
+                            <span className="text-[8px] font-bold text-slate-500 uppercase font-mono font-sans">Police Jurisdiction</span>
+                            <p className="text-xs text-slate-300">{checkpointSourceData.fieldDetails.policeStation || "[N/A]"}</p>
+                          </div>
+                        </div>
+                        <div>
+                          <span className="text-[8px] font-bold text-slate-500 uppercase font-mono font-sans">Sections Pressed</span>
+                          <p className="text-xs text-slate-300 font-mono">{checkpointSourceData.fieldDetails.sectionCharged || "[N/A]"}</p>
+                        </div>
+                        <div>
+                          <span className="text-[8px] font-bold text-slate-500 uppercase font-mono font-sans">Bailable Status</span>
+                          <p className="text-xs text-slate-300 uppercase font-mono font-bold">{checkpointSourceData.fieldDetails.isBailable || "yes"}</p>
+                        </div>
+                        {checkpointSourceData.fieldDetails.isBailable === 'no' && (
+                          <div className="grid grid-cols-2 gap-2">
+                            <div>
+                              <span className="text-[8px] font-bold text-slate-500 uppercase font-mono font-sans">Custody Remand Date</span>
+                              <p className="text-xs text-slate-300 font-mono">{checkpointSourceData.fieldDetails.remandDate || "[N/A]"}</p>
+                            </div>
+                            <div>
+                              <span className="text-[8px] font-bold text-slate-500 uppercase font-mono font-sans font-sans font-sans">Jail Location</span>
+                              <p className="text-xs text-slate-300">{checkpointSourceData.fieldDetails.jailName || "[N/A]"}</p>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                {/* Right Side: What AI Wants to Write (EDITABLE!) */}
+                <div className="flex flex-col space-y-4">
+                  <span className="text-[10px] font-black text-indigo-400 uppercase tracking-widest block font-mono">AI Proposed Outputs (RIGHT)</span>
+                  
+                  {/* File name suggestion */}
+                  <div className="space-y-1">
+                    <label className="text-[9px] font-black text-indigo-400 uppercase tracking-widest block font-sans">Matter Standardised File Name</label>
+                    <input 
+                      type="text" 
+                      value={checkpointProposedFileName}
+                      onChange={e => setCheckpointProposedFileName(e.target.value)}
+                      className="w-full bg-[#0d1326] border border-white/10 rounded-xl px-3.5 py-2.5 text-xs text-slate-200 outline-none focus:border-indigo-500/50 transition-colors font-mono font-bold text-indigo-300"
+                    />
+                  </div>
+
+                  {/* Task Sequence prefill */}
+                  <div className="space-y-1">
+                    <label className="text-[9px] font-black text-indigo-400 uppercase tracking-widest block font-sans">Target Task Sequence Checklist</label>
+                    <div className="space-y-2 max-h-[140px] overflow-y-auto custom-scrollbar bg-slate-950/20 p-3 rounded-2xl border border-white/5 pr-2">
+                      {checkpointProposedTasks.map((t, idx) => (
+                        <div key={idx} className="flex gap-2 items-center bg-[#0d1326] px-3 py-1.5 rounded-xl border border-white/5 animate-none">
+                          <input 
+                            type="text" 
+                            value={t.title} 
+                            onChange={e => {
+                              const updated = [...checkpointProposedTasks];
+                              updated[idx].title = e.target.value;
+                              setCheckpointProposedTasks(updated);
+                            }}
+                            className="flex-1 bg-transparent text-xs text-slate-200 outline-none border-b border-transparent focus:border-indigo-500/35 pb-0.5 font-sans"
+                          />
+                          <input 
+                            type="date" 
+                            value={t.dueDate} 
+                            onChange={e => {
+                              const updated = [...checkpointProposedTasks];
+                              updated[idx].dueDate = e.target.value;
+                              setCheckpointProposedTasks(updated);
+                            }}
+                            className="bg-transparent text-[10px] text-slate-400 outline-none border-b border-transparent focus:border-indigo-500/35 pb-0.5 font-mono cursor-pointer"
+                          />
+                          <button 
+                            type="button"
+                            onClick={() => {
+                              setCheckpointProposedTasks(prev => prev.filter((_, i) => i !== idx));
+                            }}
+                            className="p-1 hover:bg-rose-500/10 rounded-lg text-rose-500 transition-colors shrink-0"
+                          >
+                            <Trash size={12} />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Legal Draft Pleading Page 1 */}
+                  <div className="space-y-1 flex-1 flex flex-col min-h-[250px]">
+                    <div className="flex justify-between items-center">
+                      <label className="text-[9px] font-black text-indigo-400 uppercase tracking-widest block font-sans">Auto-Drafted Pleading (Page 1)</label>
+                      <span className="text-[8px] text-slate-500 font-mono">Editable drafting engine</span>
+                    </div>
+                    <textarea 
+                      value={checkpointProposedDraft}
+                      onChange={e => setCheckpointProposedDraft(e.target.value)}
+                      className="w-full flex-1 bg-[#0d1326] border border-white/10 rounded-2xl p-4 text-xs text-slate-300 font-mono leading-relaxed outline-none focus:border-[#6366f1]/50 resize-none custom-scrollbar"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Checkpoint Footer Actions */}
+              <div className="p-6 border-t border-white/5 flex gap-3 bg-white/[0.01]">
+                <button 
+                  onClick={() => setShowIntakeReviewCheckpoint(false)}
+                  className="flex-1 py-3 border border-white/10 rounded-xl font-bold text-xs tracking-wider uppercase text-slate-400 hover:text-white hover:bg-white/5 transition-all"
+                >
+                  Discard Checkpoint
+                </button>
+                <button 
+                  onClick={handleConfirmCheckpoint}
+                  className="flex-1 py-3 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl font-black text-xs tracking-widest uppercase transition-all shadow-lg active:scale-[0.98] flex items-center justify-center gap-2 font-sans"
+                >
+                  <Check size={13} />
+                  Confirm & Write to Matter File
+                </button>
+              </div>
+
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* COURT ORDER EXTRACT CONFIRMATION OVERLAY [F06] */}
+      <AnimatePresence>
+        {showExtractionConfirm && extractedOrderData && (
+          <motion.div 
+            initial={{ opacity: 0 }} 
+            animate={{ opacity: 1 }} 
+            exit={{ opacity: 0 }} 
+            className="fixed inset-0 bg-slate-950/95 backdrop-blur-md z-[700] flex items-center justify-center p-4 md:p-8"
+          >
+            <motion.div 
+              initial={{ scale: 0.95, y: 15 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.95, y: 15 }}
+              className="max-w-4xl w-full bg-[#0a0f1d] border border-white/10 rounded-3xl overflow-hidden shadow-2xl flex flex-col max-h-[90vh]"
+            >
+              {/* Header */}
+              <div className="p-6 border-b border-white/5 flex justify-between items-center bg-white/[0.01]">
+                <div>
+                  <div className="text-[9px] font-black text-amber-400 tracking-widest uppercase mb-1 font-mono">F06 COURT ORDER INTELLIGENCE</div>
+                  <h3 className="text-xl font-black text-slate-100 italic">Review & Extract Hearing Date</h3>
+                </div>
+                <button 
+                  onClick={() => setShowExtractionConfirm(false)}
+                  className="p-2 bg-white/5 hover:bg-white/10 rounded-xl text-slate-400 transition-all hover:text-white"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+
+              {/* Side by Side Body */}
+              <div className="flex-1 p-6 overflow-y-auto grid grid-cols-1 md:grid-cols-2 gap-6 custom-scrollbar">
+                
+                {/* Scanned Text Left */}
+                <div className="flex flex-col space-y-2 h-full">
+                  <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest block font-mono">Scanned Raw Text</span>
+                  <div className="flex-1 min-h-[220px] bg-black/40 border border-white/5 p-4 rounded-2xl overflow-y-auto custom-scrollbar text-xs text-slate-400 font-mono leading-relaxed whitespace-pre-wrap">
+                    {scannedText}
+                  </div>
+                </div>
+
+                {/* Extracted Fields Form Right */}
+                <div className="space-y-4">
+                  <span className="text-[9px] font-black text-slate-500 uppercase tracking-widest block font-mono font-sans">Extracted Structured Fields</span>
+                  
+                  {/* Select Matching Client */}
+                  <div className="space-y-1">
+                    <label className="text-[8px] font-black text-indigo-400 uppercase tracking-widest block font-mono">Associate with Client Matter</label>
+                    <select
+                      value={matchingClientId || ""}
+                      onChange={(e) => setMatchingClientId(Number(e.target.value))}
+                      className="w-full bg-[#0d1326] border border-white/10 rounded-xl px-3 py-2 text-xs text-slate-200 outline-none focus:border-indigo-500/50 transition-colors font-sans"
+                    >
+                      <option value="" disabled>Select Client...</option>
+                      {clients.map(cl => (
+                        <option key={cl.id} value={cl.id}>{cl.name} ({cl.case_number})</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {/* Case Number */}
+                    <div className="space-y-1">
+                      <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest block font-mono">Case Number</label>
+                      <input 
+                        type="text" 
+                        value={extractedOrderData.case_number || ""}
+                        onChange={(e) => setExtractedOrderData(prev => prev ? ({ ...prev, case_number: e.target.value }) : null)}
+                        placeholder="e.g. OS 120/2026"
+                        className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-xs text-slate-200 outline-none focus:border-indigo-500/50 transition-colors font-mono"
+                      />
+                    </div>
+
+                    {/* Hearing Date */}
+                    <div className="space-y-1">
+                      <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest block font-mono">Hearing / Posting Date</label>
+                      <input 
+                        type="text" 
+                        value={extractedOrderData.hearing_date || ""}
+                        onChange={(e) => setExtractedOrderData(prev => prev ? ({ ...prev, hearing_date: e.target.value }) : null)}
+                        placeholder="YYYY-MM-DD"
+                        className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-xs text-slate-200 outline-none focus:border-indigo-500/50 transition-colors font-mono text-emerald-400 font-bold"
+                      />
+                    </div>
+                  </div>
+
+                  {/* Court Name */}
+                  <div className="space-y-1">
+                    <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest block font-mono font-sans">Court Name</label>
+                    <input 
+                      type="text" 
+                      value={extractedOrderData.court_name || ""}
+                      onChange={(e) => setExtractedOrderData(prev => prev ? ({ ...prev, court_name: e.target.value }) : null)}
+                      placeholder="e.g. District Court, Ernakulam"
+                      className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-xs text-slate-200 outline-none focus:border-indigo-500/50 transition-colors font-sans"
+                    />
+                  </div>
+
+                  {/* Directive / Posting Purpose */}
+                  <div className="space-y-1">
+                    <label className="text-[8px] font-black text-slate-400 uppercase tracking-widest block font-mono font-sans">Hearing Directive / Posting Purpose</label>
+                    <textarea 
+                      rows={3}
+                      value={extractedOrderData.directive || ""}
+                      onChange={(e) => setExtractedOrderData(prev => prev ? ({ ...prev, directive: e.target.value }) : null)}
+                      placeholder="e.g. For filing written statement or survey boundaries representation..."
+                      className="w-full bg-white/5 border border-white/10 rounded-xl px-3 py-2 text-xs text-slate-200 outline-none focus:border-indigo-500/50 transition-colors font-sans leading-relaxed"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Action buttons */}
+              <div className="p-6 border-t border-white/5 bg-white/[0.01] flex gap-3">
+                <button 
+                  onClick={() => setShowExtractionConfirm(false)}
+                  className="flex-1 py-3 bg-white/5 hover:bg-white/10 text-slate-300 hover:text-white rounded-xl font-black text-xs tracking-widest uppercase transition-all font-mono"
+                >
+                  Discard
+                </button>
+                <button 
+                  onClick={handleConfirmExtraction}
+                  disabled={!matchingClientId}
+                  className="flex-1 py-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-black text-xs tracking-widest uppercase transition-all flex items-center justify-center gap-2 shadow-lg disabled:opacity-50 font-sans"
+                >
+                  <Check size={14} />
+                  Confirm & Update Case Matter
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* MALAYALAM WHATSAPP UPDATE MODAL [F07] */}
+      <AnimatePresence>
+        {showWhatsappModal && whatsappDraftClient && (
+          <motion.div 
+            initial={{ opacity: 0 }} 
+            animate={{ opacity: 1 }} 
+            exit={{ opacity: 0 }} 
+            className="fixed inset-0 bg-slate-950/95 backdrop-blur-md z-[700] flex items-center justify-center p-4"
+          >
+            <motion.div 
+              initial={{ scale: 0.95, y: 15 }}
+              animate={{ scale: 1, y: 0 }}
+              exit={{ scale: 0.95, y: 15 }}
+              className="max-w-md w-full bg-[#0a0f1d] border border-white/10 rounded-3xl overflow-hidden shadow-2xl flex flex-col"
+            >
+              {/* Header */}
+              <div className="p-6 border-b border-white/5 flex justify-between items-center bg-[#070b14]/90">
+                <div>
+                  <div className="text-[9px] font-black text-emerald-400 tracking-widest uppercase mb-1 font-mono flex items-center gap-1">
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-ping" />
+                    F07 MALAYALAM COMMUNICATIONS SERVICE
+                  </div>
+                  <h3 className="text-xl font-black text-slate-100 italic">WhatsApp Updates</h3>
+                </div>
+                <button 
+                  onClick={() => setShowWhatsappModal(false)}
+                  className="p-2 bg-white/5 hover:bg-white/10 rounded-xl text-slate-400 transition-all hover:text-white"
+                >
+                  <X size={16} />
+                </button>
+              </div>
+
+              {/* Chat Frame Body */}
+              <div className="p-6 space-y-4 bg-[#0d141d]/40 flex-1">
+                <div className="flex items-center gap-2 mb-2 bg-[#0a0f1c] p-3 rounded-2xl border border-white/5">
+                  <div className="w-8 h-8 rounded-full bg-emerald-500/10 flex items-center justify-center text-emerald-400 font-bold text-xs uppercase font-mono">
+                    {whatsappDraftClient.name[0]}
+                  </div>
+                  <div>
+                    <div className="text-xs font-bold text-slate-200">{whatsappDraftClient.name}</div>
+                    <div className="text-[10px] text-slate-500 font-mono">{whatsappDraftClient.phone}</div>
+                  </div>
+                </div>
+
+                {/* Simulated WhatsApp Bubble */}
+                <div className="space-y-1.5">
+                  <span className="text-[8px] font-black text-slate-500 uppercase tracking-widest font-mono block">WhatsApp Preview Bubble</span>
+                  
+                  {isDraftingWhatsapp ? (
+                    <div className="bg-[#056162]/20 border border-emerald-500/20 p-8 rounded-2xl flex flex-col items-center justify-center gap-3">
+                      <div className="w-8 h-8 border-3 border-emerald-500 border-t-transparent rounded-full animate-spin" />
+                      <div className="text-[10px] uppercase font-black tracking-widest text-emerald-400 font-mono">Drafting in Malayalam...</div>
+                    </div>
+                  ) : (
+                    <div className="relative bg-[#056162] border border-[#0d7d7f]/50 p-4 rounded-2xl rounded-tr-none text-slate-100 text-xs leading-relaxed space-y-3 font-sans shadow-xl">
+                      <textarea
+                        rows={6}
+                        value={whatsappDraft}
+                        onChange={(e) => setWhatsappDraft(e.target.value)}
+                        className="w-full bg-transparent border-none outline-none resize-none text-slate-100 text-xs leading-relaxed focus:ring-0 p-0 font-sans custom-scrollbar"
+                      />
+                      <div className="text-[8px] text-emerald-200/60 font-mono text-right flex items-center justify-end gap-1 select-none">
+                        <span>Just now</span>
+                        <span>✓✓</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Footer copy operations */}
+              <div className="p-6 border-t border-white/5 bg-white/[0.01] flex flex-col gap-2">
+                <button 
+                  onClick={() => {
+                    navigator.clipboard.writeText(whatsappDraft);
+                    const btn = document.getElementById("copy-wa-btn");
+                    if (btn) {
+                      const prevText = btn.innerHTML;
+                      btn.innerHTML = "✓ Copied to Clipboard!";
+                      btn.classList.add("bg-emerald-600", "text-white");
+                      setTimeout(() => {
+                        btn.innerHTML = prevText;
+                        btn.classList.remove("bg-emerald-600", "text-white");
+                      }, 2000);
+                    }
+                  }}
+                  id="copy-wa-btn"
+                  disabled={isDraftingWhatsapp || !whatsappDraft}
+                  className="w-full py-3 bg-[#075e54] hover:bg-[#128c7e] rounded-xl font-black text-xs tracking-widest uppercase transition-all flex items-center justify-center gap-2 border border-white/10 text-white active:scale-[0.98]"
+                >
+                  <Copy size={12} />
+                  Copy WhatsApp Message
+                </button>
+                <button 
+                  onClick={() => setShowWhatsappModal(false)}
+                  className="w-full py-2.5 text-slate-500 hover:text-slate-400 text-[10px] uppercase font-black tracking-widest font-mono transition-all"
+                >
+                  Close Message Panel
+                </button>
+              </div>
+            </motion.div>
           </motion.div>
         )}
       </AnimatePresence>

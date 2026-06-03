@@ -218,6 +218,24 @@ export function useGeminiLive() {
     setError(null);
     setMessages([]); // Start fresh with empty messages on connection
 
+    // Initialize AudioContext immediately inside the user click interaction (Bug 3)
+    const AudioContextClass = (window.AudioContext || (window as any).webkitAudioContext);
+    try {
+      if (!audioContextRef.current || audioContextRef.current.state === 'closed') {
+        try {
+          audioContextRef.current = new AudioContextClass({ sampleRate: 16000 });
+        } catch (e) {
+          console.warn("Could not force 16kHz sample rate, using default:", e);
+          audioContextRef.current = new AudioContextClass();
+        }
+      }
+      if (audioContextRef.current && audioContextRef.current.state === 'suspended') {
+        await audioContextRef.current.resume();
+      }
+    } catch (e) {
+      console.warn("Failed to initialize AudioContext synchronously:", e);
+    }
+
     // Pre-emptively load local Whisper model if enabled and not ready
     if (useWhisperSTTRef.current) {
       const engine = MalayalamEngine.getInstance();
@@ -233,15 +251,15 @@ export function useGeminiLive() {
     try {
       const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY! });
       
-      const AudioContextClass = (window.AudioContext || (window as any).webkitAudioContext);
-      try {
-        audioContextRef.current = new AudioContextClass({ sampleRate: 16000 });
-      } catch (e) {
-        console.warn("Could not force 16kHz sample rate, using default:", e);
-        audioContextRef.current = new AudioContextClass();
+      // Ensure audio context is ready
+      if (!audioContextRef.current) {
+        try {
+          audioContextRef.current = new AudioContextClass({ sampleRate: 16000 });
+        } catch (e) {
+          audioContextRef.current = new AudioContextClass();
+        }
       }
-      
-      if (audioContextRef.current.state === 'suspended') {
+      if (audioContextRef.current && audioContextRef.current.state === 'suspended') {
         await audioContextRef.current.resume();
       }
       
@@ -464,18 +482,34 @@ You handle interruptions naturally. Keep your responses brief and helpful.`,
       };
 
       source.connect(processor);
-      processor.connect(audioContextRef.current.destination);
+      
+      // Prevent mic routing to speaker (Bug 4) using a mute GainNode:
+      if (audioContextRef.current) {
+        const muteGain = audioContextRef.current.createGain();
+        muteGain.gain.setValueAtTime(0, audioContextRef.current.currentTime);
+        processor.connect(muteGain);
+        muteGain.connect(audioContextRef.current.destination);
+      }
 
     } catch (e: any) {
       console.error("Failed to connect:", e);
       let rawMsg = "";
-      if (typeof e === 'string') rawMsg = e;
-      else if (e?.message) rawMsg = e.message;
-      else if (e?.error?.message) rawMsg = e.error.message;
-      else rawMsg = String(e);
+      if (typeof e === 'string') {
+        rawMsg = e;
+      } else if (e?.name === 'NotAllowedError' || e?.name === 'PermissionDeniedError') {
+        rawMsg = "Microphone access denied. Please grant microphone permissions in your browser settings to use voice chat.";
+      } else if (e?.message) {
+        rawMsg = e.message;
+      } else if (e?.error?.message) {
+        rawMsg = e.error.message;
+      } else {
+        rawMsg = String(e);
+      }
 
       let msg = "Failed to establish connection.";
-      if (rawMsg.includes("Resource has been exhausted")) {
+      if (rawMsg.includes("Microphone access denied")) {
+        msg = rawMsg;
+      } else if (rawMsg.includes("Resource has been exhausted")) {
         msg = "API Quota exceeded. Please try again later.";
       } else if (rawMsg.includes("Network error") || rawMsg.includes("Failed to fetch") || rawMsg.includes("WebSocket")) {
         msg = "Network connection failed. Please check your internet connection.";
